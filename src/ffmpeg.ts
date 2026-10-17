@@ -135,6 +135,7 @@ export function readFrames(
 export class FrameSink {
   private readonly proc;
   private readonly done: Promise<void>;
+  private exited = false;
 
   constructor(args: string[]) {
     const full = ["-v", "error", "-y", ...args];
@@ -148,12 +149,27 @@ export class FrameSink {
       this.proc.on("error", reject);
       this.proc.on("close", (code) => (code === 0 ? resolve() : reject(failure(full, code, stderr))));
     });
-    this.done.catch(() => {}); // observed by end()
+    this.done.then(
+      () => {
+        this.exited = true;
+      },
+      () => {
+        this.exited = true;
+      },
+    ); // failures are observed by write()/end()
   }
 
+  /** Resolves when the frame is accepted; rejects with the encoder's CameraworkError if ffmpeg has died. */
   write(frame: Buffer): Promise<void> {
-    if (this.proc.stdin.write(frame)) return Promise.resolve();
-    return new Promise((resolve) => this.proc.stdin.once("drain", () => resolve()));
+    if (this.exited) return this.done;
+    const stdin = this.proc.stdin;
+    if (stdin.destroyed || stdin.writableEnded)
+      return this.done.then(() => Promise.reject(new CameraworkError("ffmpeg input is closed")));
+    if (stdin.write(frame)) return Promise.resolve();
+    return Promise.race([
+      new Promise<void>((resolve) => stdin.once("drain", () => resolve())),
+      this.done.then(() => Promise.reject(new CameraworkError("ffmpeg exited while frames were still being written"))),
+    ]);
   }
 
   end(): Promise<void> {

@@ -49,4 +49,15 @@ describe("ffmpeg adapters", () => {
     expect(hasEncoder("libx264")).toBe(true);
     expect(hasEncoder("definitely-not-an-encoder")).toBe(false);
   });
+
+  test("FrameSink.write rejects instead of hanging when the encoder dies", async () => {
+    const raw = ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", "64x36", "-r", "10", "-i", "-"];
+    const sink = new FrameSink([...raw, "-c:v", "no-such-codec", join(tmpDir(), "bad.mp4")]);
+    const frame = Buffer.alloc(64 * 36 * 4, 200);
+    const run = async () => {
+      for (let i = 0; i < 200; i++) await sink.write(frame);
+      await sink.end();
+    };
+    await expect(run()).rejects.toThrow(CameraworkError);
+  }, 3000);
 });
