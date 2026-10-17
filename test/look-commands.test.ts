@@ -3,7 +3,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer } from "node:net";
 import { join } from "node:path";
-import { loadImage } from "@napi-rs/canvas";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { BACKDROPS } from "../src/backdrops/presets.js";
 import { startEditor } from "../src/editor/server.js";
 import { sceneLayout } from "../src/geometry.js";
@@ -177,4 +177,67 @@ describe("look edit option validation", () => {
     });
     expect((await junk.exit).code).toBe(0);
   }, 30_000);
+});
+
+describe("look commands: fix round 1", () => {
+  test("--at just under the master's duration finishes (it used to hang past the last frame)", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 2, boxes: [] });
+    const look = join(dir, "look.json");
+    writeFileSync(look, JSON.stringify({ ...LOOKS.hero, backdrop: { type: "shader", style: "mesh" } }));
+    for (const at of ["1.97", "1.99"]) {
+      const r = spawnSync(
+        "bun",
+        [CLI, "look", "preview", look, "--master", master, "--at", at, "-o", join(dir, `${at}.png`)],
+        {
+          encoding: "utf8",
+          timeout: 40_000,
+        },
+      );
+      expect(r.status).toBe(0);
+      expect(existsSync(join(dir, `${at}.png`))).toBe(true);
+    }
+  }, 120_000);
+
+  test("--at without --master is a usage error", () => {
+    const r = cli("look", "preview", "hero", "--at", "1", "-o", join(tmpDir(), "x.png"));
+    expect(r.status).toBe(2);
+    expect(r.stderr).toContain("--at needs --master");
+  });
+
+  test("a missing preset says which command needs it", () => {
+    expect(cli("look", "preview", "-o", join(tmpDir(), "x.png")).stderr).toContain("look preview needs a look preset");
+    expect(cli("look", "preview").stderr).toContain("look preview needs -o");
+  });
+
+  test("an image backdrop's relative path counts from the look file, not the working directory", async () => {
+    const dir = tmpDir();
+    const img = createCanvas(64, 64);
+    const ctx = img.getContext("2d");
+    ctx.fillStyle = "#ff0000";
+    ctx.fillRect(0, 0, 64, 64);
+    writeFileSync(join(dir, "bg.png"), img.toBuffer("image/png"));
+    writeFileSync(
+      join(dir, "look.json"),
+      JSON.stringify({ ...LOOKS.hero, backdrop: { type: "image", path: "bg.png" } }),
+    );
+    const r = spawnSync(
+      "bun",
+      [CLI, "look", "preview", join(dir, "look.json"), "-o", join(dir, "o.png"), "--width", "320"],
+      {
+        encoding: "utf8",
+        cwd: tmpDir(),
+      },
+    );
+    expect(r.stderr).toBe("");
+    expect(r.status).toBe(0);
+    const out = await loadImage(join(dir, "o.png"));
+    const c = createCanvas(out.width, out.height);
+    const cx = c.getContext("2d");
+    cx.drawImage(out, 0, 0);
+    const [red, green] = cx.getImageData(3, 3, 1, 1).data;
+    expect(red).toBeGreaterThan(150);
+    expect(green).toBeLessThan(80);
+  }, 60_000);
 });

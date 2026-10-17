@@ -37,9 +37,11 @@ export async function lookPreview(look: Look, opts: LookPreviewOptions): Promise
     const seek: string[] = [];
     if (opts.master) {
       const info = probe(opts.master);
-      const at = opts.at ?? info.duration / 2;
-      if (!(at >= 0 && at < info.duration))
-        throw new CameraworkError(`--at ${at} is outside the master (0 to ${info.duration.toFixed(2)} s)`);
+      const asked = opts.at ?? info.duration / 2;
+      if (!(asked >= 0 && asked < info.duration))
+        throw new CameraworkError(`--at ${asked} is outside the master (0 to ${info.duration.toFixed(2)} s)`);
+      // The last frame, not after it: a seek past the final frame yields nothing and the looping inputs never end.
+      const at = Math.min(asked, Math.max(0, info.duration - 1.5 / info.fps));
       source = opts.master;
       size = info;
       seek.push("-ss", at.toFixed(3));
@@ -57,6 +59,7 @@ export async function lookPreview(look: Look, opts: LookPreviewOptions): Promise
       (f) => {
         scene = Buffer.from(f);
       },
+      120_000,
     );
     if (!scene) throw new CameraworkError(`no frame of ${source} at the requested time`);
     const pixels = scene as Buffer;

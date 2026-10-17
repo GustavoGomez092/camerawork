@@ -139,6 +139,8 @@ export async function startEditor(opts: EditorOptions): Promise<EditorSession> {
     out,
   };
   const assets = findAssets(opts.assetsDir);
+  if (!existsSync(join(assets, "index.html")))
+    throw new CameraworkError("the editor page is not built; run `npm run build` (or `bun run build`) first");
   const idleMs = opts.idleMs ?? 120_000;
   const frames = new Map<string, Buffer>();
   let placeholder: Buffer | null = null;

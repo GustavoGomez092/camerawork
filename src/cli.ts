@@ -90,8 +90,15 @@ function checkOutputDir(out: string): void {
 }
 
 /** A look argument: a path ending in .json is read as a look file; anything else is a preset name. */
-const lookArg = (v: string | undefined): string | Look | undefined =>
-  v?.endsWith(".json") ? (readJson(v) as Look) : v;
+const lookArg = (v: string | undefined): string | Look | undefined => {
+  if (!v?.endsWith(".json")) return v;
+  const look = readJson(v) as Look;
+  // A relative image path counts from the look file's folder (as readPlan does for plans); resolveLook validates the rest.
+  const bd = look?.backdrop;
+  if (bd && typeof bd === "object" && bd.type === "image" && typeof bd.path === "string")
+    return { ...look, backdrop: { ...bd, path: resolve(dirname(v), bd.path) } };
+  return look;
+};
 
 /** `camerawork looks`: every look preset and backdrop preset, one line each. */
 function listLooks(): string {
@@ -149,7 +156,7 @@ async function main(argv: string[]): Promise<void> {
     return;
   }
   const need = (v: string | undefined, what: string): string => {
-    if (!v) throw new UsageError(`${command} needs ${what}`);
+    if (!v) throw new UsageError(`${command === "look" ? `look ${input ?? ""}`.trim() : command} needs ${what}`);
     return v;
   };
   checkFlags(command === "look" ? `look ${input ?? ""}` : command, Object.keys(values));
@@ -161,6 +168,8 @@ async function main(argv: string[]): Promise<void> {
       ),
     );
   if (command === "preview" && values.out) checkOutputDir(values.out);
+  if (command === "look" && input === "preview" && values.at !== undefined && !values.master)
+    throw new UsageError("--at needs --master (the placeholder window has no timeline)");
   if (command === "look" && (input === "preview" || input === "edit"))
     checkOutputDir(need(values.out, input === "preview" ? "-o <look.png>" : "-o <look.json>"));
   const masks = (values.mask ?? []).map(rect);

@@ -85,10 +85,18 @@ export function readFrames(
   args: string[],
   frameBytes: number,
   onFrame: (frame: Buffer, index: number) => void | Promise<void>,
+  /** Kill ffmpeg and fail after this long (a bound for runs that must produce frames quickly). */
+  timeoutMs?: number,
 ): Promise<number> {
   const full = ["-v", "error", ...args, "-f", "rawvideo", "-"];
   return new Promise((resolve, reject) => {
     const proc = spawn("ffmpeg", full, { stdio: ["ignore", "pipe", "pipe"] });
+    const watchdog = timeoutMs
+      ? setTimeout(() => {
+          failed = new CameraworkError(`ffmpeg produced no result within ${Math.round(timeoutMs / 1000)} s`);
+          proc.kill("SIGKILL");
+        }, timeoutMs)
+      : undefined;
     let stderr = "";
     proc.stderr.on("data", (d) => {
       stderr = (stderr + d).slice(-8000);
@@ -120,8 +128,12 @@ export function readFrames(
         proc.stdout.resume();
       });
     });
-    proc.on("error", reject);
+    proc.on("error", (error) => {
+      clearTimeout(watchdog);
+      reject(error);
+    });
     proc.on("close", (code) => {
+      clearTimeout(watchdog);
       work.then(() => {
         if (failed) reject(failed);
         else if (code !== 0) reject(failure(full, code, stderr));

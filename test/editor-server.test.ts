@@ -61,11 +61,10 @@ describe("editor server", () => {
     expect((await fetch(new URL("/nope", session.url))).status).toBe(404);
   });
 
-  test("an unbuilt page is a readable 500, not a crash", async () => {
-    const { session } = await start({ assetsDir: tmpDir() });
-    const page = await fetch(session.url);
-    expect(page.status).toBe(500);
-    expect(await page.text()).toContain("not built");
+  test("an unbuilt page is refused up front, not served as a 500", async () => {
+    await expect(
+      startEditor({ out: join(tmpDir(), "l.json"), look: resolveLook("hero"), assetsDir: tmpDir() }),
+    ).rejects.toThrow("the editor page is not built; run `npm run build`");
   });
 
   test("refuses other Host headers (DNS rebinding) and non-JSON saves", async () => {
