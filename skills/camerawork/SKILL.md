@@ -85,8 +85,9 @@ and `tilt`; `backdrop` can be `{ "type": "image", "path": "bg.jpg" }`, relative 
 
 ## Errors worth knowing
 
-- "would upscale": the master is too small for that output width at that zoom → lower `--width` or `--max-zoom`, or
-  record a bigger master.
+- "would upscale": the scene at zoom 1 is narrower than `--width` → lower `--width` (the message suggests a value) or
+  record a bigger master. `--max-zoom` does not fix it: it is capped by the master size, which is why `plan` prints
+  the effective max zoom.
 - "larger than the …-byte limit": plan again with a lower `--width` or `--fps`, or a higher `--max-bytes`.
 - `camerawork: command not found` or ffmpeg missing: run the Setup step above.
 - `camerawork detect master.mov -o changes.json` writes just the detected changes; pass them to `plan` with

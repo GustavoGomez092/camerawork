@@ -51,14 +51,14 @@ the installer with `--engine-only` (ffmpeg and the engine, no second copy of the
 
 ```bash
 # the engine: fetch the repository as a tarball, then install that globally
-cd "$(mktemp -d)" && npm pack github:GustavoGomez092/camerawork && npm install -g ./camerawork-*.tgz
+cd "$(mktemp -d)" && npm pack git+https://github.com/GustavoGomez092/camerawork.git && npm install -g ./camerawork-*.tgz
 
 # the skill: copy it next to your other Claude skills
 mkdir -p ~/.claude/skills
 cp -R "$(npm root -g)/camerawork/skills/camerawork" ~/.claude/skills/camerawork
 ```
 
-`npm install -g github:GustavoGomez092/camerawork` is the short form. It builds the package on install, but some npm
+`npm install -g github:GustavoGomez092/camerawork` is the short form (it fetches over ssh first, so it fails on machines without GitHub keys). It builds the package on install, but some npm
 versions then link the global install to a temporary checkout that npm deletes, which leaves a broken `camerawork`
 command (seen with npm 11.6 and 11.21 on a local git URL). The installer therefore always packs first, as above.
 
@@ -200,8 +200,9 @@ The other planner values (below) can be set in cues.json. The plan stores the ef
 | `idleWide` | `2.5` | Seconds of quiet before the camera drifts back to wide. |
 | `shotJoinGap` | `0.6` | Moments closer than this (seconds) can join one shot. |
 
-`plan` fails with "would upscale" when `--width` is larger than the scene at the deepest zoom allows (see
-[Troubleshooting](#troubleshooting)).
+`plan` fails with "would upscale" only when the scene at zoom 1 is narrower than `--width` (see
+[Troubleshooting](#troubleshooting)). `--max-zoom` is clamped to the scene width divided by `--width`, so a small
+master caps the zoom by itself: that is why `plan` prints the effective max zoom.
 
 ### `preview`
 
@@ -318,8 +319,9 @@ const files = await render(readPlan("plan.json"), { out: "out/feature" }); // ["
 
 ## Troubleshooting
 
-- **"would upscale"**: the master is too small for that output width at that zoom. Lower `--width` or `--max-zoom`
-  when planning (the message suggests a width), or record a bigger master.
+- **"would upscale"**: the scene at zoom 1 is narrower than `--width`. Lower `--width` when planning (the message
+  suggests a value) or record a bigger master. Lowering `--max-zoom` does not help: it is capped by the master size
+  (at most scene width / `--width`), which is why `plan` prints the effective max zoom.
 - **"larger than the …-byte limit"**: the output exceeds `--max-bytes`. Plan again with a lower `--width` or `--fps`,
   or a higher `--max-bytes`.
 - **The camera chases a status bar, spinner or clock**: mask it with `--mask x,y,w,h` (master pixels) or `"masks"`

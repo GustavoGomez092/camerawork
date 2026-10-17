@@ -30,7 +30,7 @@ describe("docs", () => {
       "skills/camerawork/install.sh | bash",
       "/plugin marketplace add GustavoGomez092/camerawork",
       "/plugin install camerawork@camerawork",
-      "npm install -g github:GustavoGomez092/camerawork",
+      "npm pack git+https://github.com/GustavoGomez092/camerawork.git",
       "npm install -g camerawork",
       "~/.claude/skills",
       "camerawork detect",

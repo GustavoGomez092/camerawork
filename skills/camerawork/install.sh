@@ -106,7 +106,7 @@ ffmpeg_ok() {
 ffmpeg_help() {
   cat >&2 <<'HELP'
 Install ffmpeg and ffprobe 6 or newer, then run this installer again:
-  macOS:          brew install ffmpeg
+  macOS:          brew install ffmpeg </dev/null
   Debian/Ubuntu:  sudo apt-get install -y ffmpeg
   Fedora:         sudo dnf install -y ffmpeg   (enable RPM Fusion first if needed)
   Arch:           sudo pacman -S ffmpeg
@@ -116,6 +116,7 @@ HELP
 
 as_root() { # runs a command with sudo unless already root; announces sudo first
   if [ "$(id -u)" = 0 ]; then "$@"; else
+    have sudo || { warn "sudo is not available and you are not root: install the package yourself ($*), then run this installer again"; exit 1; }
     say "This needs administrator rights: running 'sudo $*'"
     sudo "$@"
   fi
@@ -132,13 +133,13 @@ if [ "$FFMPEG" = 1 ]; then
     say "ffmpeg or ffprobe is missing: installing ffmpeg"
     if [ "$OS" = Darwin ]; then
       have brew || { warn "Homebrew is not installed (https://brew.sh)"; ffmpeg_help; exit 1; }
-      brew install ffmpeg
+      brew install ffmpeg </dev/null
     elif have apt-get; then
-      as_root apt-get install -y ffmpeg
+      as_root apt-get install -y ffmpeg </dev/null
     elif have dnf; then
-      as_root dnf install -y ffmpeg
+      as_root dnf install -y ffmpeg </dev/null
     elif have pacman; then
-      as_root pacman -S --noconfirm ffmpeg
+      as_root pacman -S --noconfirm ffmpeg </dev/null
     else
       warn "no supported package manager found (brew, apt-get, dnf, pacman)"
       ffmpeg_help
@@ -162,17 +163,17 @@ HELP
 }
 
 install_engine() {
-  local spec="${SPEC_OVERRIDE:-github:$REPO#$REF}" tmp log tgz
+  local spec="${SPEC_OVERRIDE:-git+https://github.com/$REPO.git#$REF}" tmp log tgz
   tmp="$(mktemp -d)"
   log="$tmp/npm.log"
   say "Installing the camerawork engine from $spec"
   # `npm install -g <git spec>` links to a temporary checkout on some npm versions, so build a tarball first.
-  if ! tgz="$(cd "$tmp" && npm pack "$spec" --silent 2>"$log" | tail -n 1)" || [ -z "$tgz" ] || [ ! -f "$tmp/$tgz" ]; then
+  if ! tgz="$(cd "$tmp" && npm pack "$spec" --silent 2>"$log" </dev/null | tail -n 1)" || [ -z "$tgz" ] || [ ! -f "$tmp/$tgz" ]; then
     cat "$log" >&2
     rm -rf "$tmp"
     die "could not fetch and build $spec (is git installed, and does the ref exist?)"
   fi
-  if ! npm install -g "$tmp/$tgz" >"$log" 2>&1; then
+  if ! npm install -g "$tmp/$tgz" >"$log" 2>&1 </dev/null; then
     if grep -q 'EACCES' "$log"; then eacces_help; else cat "$log" >&2; fi
     rm -rf "$tmp"
     exit 1
