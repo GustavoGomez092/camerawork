@@ -37,7 +37,7 @@ Node yourself. `--no-ffmpeg` skips ffmpeg, `--upgrade` reinstalls the engine.
 
 1. **Get a master.** A high-resolution recording, ideally twice the output width (a 3840-px master for a 1920-px
    video); deeper zooms need more pixels. Scripted captures are best; hand recordings work too.
-2. **Plan.** `camerawork plan master.mov -o plan.json --look hero --loop` (add `--cues cues.json` if the capture
+2. **Choose a look** (see Looks below), then **plan.** `camerawork plan master.mov -o plan.json --look hero --loop` (add `--cues cues.json` if the capture
    wrote one; `--loop` for website loops). It prints the shot count and the effective max zoom. All output options
    (`--width`, `--fps`, `--formats`, `--poster`, `--max-bytes`, `--quality`, `--look`, `--loop`) belong to `plan`:
    `preview` and `render` reject them with exit code 2.
@@ -79,9 +79,37 @@ rectangles (window points) to master pixels by multiplying by the display's back
 
 ## Looks
 
-`--look hero` (gradient backdrop, 9 % padding, rounded corners, shadow), `--look flat` (the window alone), or
-`--look my-look.json` (a path ending in `.json`: a full look object with `backdrop`, `padding`, `radius`, `shadow`
-and `tilt`; `backdrop` can be `{ "type": "image", "path": "bg.jpg" }`, relative to the plan file).
+Before planning, ask the user which they want: the default `hero` look, a preset, or a look customised in the editor.
+
+- **Default:** `--look hero` (gray gradient, 9 % padding, rounded corners, shadow). `--look flat` is the window alone.
+- **A preset:** `camerawork looks` lists the look and backdrop presets. `hero` is in both lists: the look wins the
+  name, so `--look hero` is the full hero look. Any backdrop preset works as a look: `--look ultraviolet` is the hero
+  window on the `ultraviolet` backdrop. Pick 2–3 that suit the product, render a still of each on the user's
+  recording, open the PNGs and look at them, show them to the user and let them choose:
+
+  ```bash
+  camerawork look preview ultraviolet --master master.mov -o /tmp/look-ultraviolet.png --width 960
+  ```
+
+  `--at seconds` picks the frame (default: the middle).
+- **Customise:** start the editor in the background and give the user the URL it prints:
+
+  ```bash
+  camerawork look edit --master master.mov -o <dir>/look.json --look ultraviolet
+  ```
+
+  It opens a browser page (add `--no-open` when there is no browser on this machine, and `--port N` for a fixed
+  port). Wait for the command to exit: exit 0 means the user pressed Save and `<dir>/look.json` exists; exit 1 means
+  the page was closed without saving or the editor timed out (nothing written). If the user abandons the editor, stop it with SIGTERM
+  (`kill <pid>`): a background job in a non-interactive shell ignores SIGINT. It also ends by itself 120 s after the
+  page stops pinging, or 15 minutes after start if no page connects. Then `camerawork plan master.mov -o plan.json --look
+  <dir>/look.json`.
+
+A look file is a full object with `backdrop`, `padding`, `radius`, `shadow` and `tilt`. `backdrop` can be a gradient,
+a solid colour, `{ "type": "image", "path": "bg.jpg" }` (relative to the look file, or to the plan file inside plan.json),
+or a procedural `{ "type": "shader", "style": "silk", "colors": [...], "motion": { "enabled": true, "speed": 0.3 } }`
+(styles: silk, waves, aurora, mesh, stripes, ripple, linear, radial, conic). Motion makes the backdrop loop seamlessly over the
+video; it costs render time (roughly 20–45 ms per frame on 8 cores).
 
 ## Errors worth knowing
 

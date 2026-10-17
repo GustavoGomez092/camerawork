@@ -1,3 +1,5 @@
+import { shaderColors } from "./backdrops/index.js";
+import { BACKDROPS, type BackdropPreset, FLAT_WINDOW, HERO_BACKDROP, HERO_WINDOW } from "./backdrops/presets.js";
 import { CameraworkError, parseWith } from "./errors.js";
 import { type Look, LookSchema } from "./schema.js";
 
@@ -6,35 +8,43 @@ export const LOOKS = {
   // Measured from the JSLab hero (ruling R2): padding 0.09, radius 18, no tilt, a gray sky-to-ground gradient.
   hero: {
     preset: "hero",
-    backdrop: {
-      type: "gradient",
-      angle: 180,
-      stops: [
-        { at: 0, color: "#8f8f8f" },
-        { at: 0.27, color: "#c4c4c4" },
-        { at: 0.42, color: "#1a1a1a" },
-        { at: 1, color: "#0e0e0e" },
-      ],
-    },
-    padding: 0.09,
-    radius: 18,
-    shadow: { blur: 60, offsetY: 24, opacity: 0.55 },
-    tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+    backdrop: HERO_BACKDROP,
+    ...structuredClone(HERO_WINDOW),
   },
   flat: {
     preset: "flat",
     backdrop: { type: "none" },
-    padding: 0,
-    radius: 0,
-    shadow: { blur: 0, offsetY: 0, opacity: 0 },
-    tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+    ...structuredClone(FLAT_WINDOW),
   },
 } satisfies Record<string, Look>;
 
-/** A preset by name (a fresh copy), or a look object validated against the schema. */
+/** One line per built-in look, for `camerawork looks`. */
+export const LOOK_DESCRIPTIONS: Record<keyof typeof LOOKS, string> = {
+  hero: "gray gradient backdrop, 9 % padding, rounded corners, soft shadow",
+  flat: "the window alone: no backdrop, padding, rounding or shadow",
+};
+
+/** Fills in the palette a shader backdrop left out, so a plan records the backdrop in full (spec: backdrops §3). */
+function complete(look: Look): Look {
+  const bd = look.backdrop;
+  return bd.type === "shader" && !bd.colors ? { ...look, backdrop: { ...bd, colors: [...shaderColors(bd)] } } : look;
+}
+
+/**
+ * A look preset by name (a fresh copy); a backdrop preset by name, which is the hero window on that backdrop; or a
+ * look object, validated against the schema.
+ */
 export function resolveLook(look: string | Look): Look {
-  if (typeof look !== "string") return parseWith(LookSchema, look, "look");
-  const preset = Object.hasOwn(LOOKS, look) ? (LOOKS as Record<string, Look>)[look] : undefined;
-  if (!preset) throw new CameraworkError(`unknown look "${look}" (known: ${Object.keys(LOOKS).join(", ")})`);
-  return structuredClone(preset);
+  if (typeof look !== "string") return complete(parseWith(LookSchema, look, "look"));
+  if (Object.hasOwn(LOOKS, look)) return structuredClone((LOOKS as Record<string, Look>)[look] as Look);
+  if (Object.hasOwn(BACKDROPS, look))
+    return {
+      ...structuredClone(LOOKS.hero),
+      preset: look,
+      backdrop: structuredClone((BACKDROPS[look] as BackdropPreset).backdrop),
+    };
+  throw new CameraworkError(
+    `unknown look "${look}" (looks: ${Object.keys(LOOKS).join(", ")}; backdrops: ${Object.keys(BACKDROPS).join(", ")}). ` +
+      "Run camerawork looks to see them, or pass a look .json file.",
+  );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { makeBoxVideo, tmpDir } from "./helpers.js";
 
@@ -45,6 +45,51 @@ describe("cli", () => {
     expect(cli("render", planPath, "-o", join(dir, "clip")).status).toBe(0);
     expect(existsSync(join(dir, "clip.mp4"))).toBe(true);
   });
+
+  test("SIGTERM during a render removes the work folder and still ends by the signal", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 1280, height: 720, fps: 30, seconds: 8, boxes: [] });
+    const lookPath = join(dir, "look.json");
+    const look = {
+      backdrop: { type: "shader", style: "aurora", motion: { enabled: true, speed: 1 } },
+      padding: 0.09,
+      radius: 18,
+      shadow: { blur: 60, offsetY: 24, opacity: 0.55 },
+      tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+    };
+    writeFileSync(lookPath, JSON.stringify(look));
+    const planPath = join(dir, "plan.json");
+    const args = [
+      "plan",
+      master,
+      "-o",
+      planPath,
+      "--look",
+      lookPath,
+      "--width",
+      "1280",
+      "--formats",
+      "mp4",
+      "--poster",
+      "none",
+    ];
+    expect(cli(...args).status).toBe(0);
+    const scratch = join(dir, "tmp");
+    mkdirSync(scratch);
+    const proc = spawn("bun", [join(import.meta.dir, "../src/cli.ts"), "render", planPath, "-o", join(dir, "clip")], {
+      env: { ...process.env, TMPDIR: scratch },
+    });
+    const ended = new Promise<[number | null, string | null]>((ok) => proc.on("close", (c, sig) => ok([c, sig])));
+    const work = () => readdirSync(scratch).filter((n) => n.startsWith("camerawork-"));
+    for (let i = 0; i < 200 && work().length === 0; i++) await new Promise((r) => setTimeout(r, 25));
+    expect(work().length).toBe(1);
+    proc.kill("SIGTERM");
+    const [code, signal] = await ended;
+    expect(signal === "SIGTERM" || code === 143).toBe(true);
+    expect(work()).toEqual([]);
+    expect(existsSync(join(dir, "clip.mp4"))).toBe(false);
+  }, 60000);
 
   test("a CameraworkError exits 1 with a camerawork: prefix", () => {
     const r = cli("plan", "/nope/missing.mov", "-o", "/tmp/x.json");

@@ -8,7 +8,7 @@ import { sceneLayout } from "./geometry.js";
 import { cameraAt } from "./plan/interp.js";
 import { makeLookAssets } from "./render/assets.js";
 import { encoderArgs } from "./render/encode.js";
-import { checkMaster } from "./render/index.js";
+import { checkMaster, cleanupOnSignal } from "./render/index.js";
 import { sceneArgs } from "./render/scene.js";
 import type { Plan, Shot } from "./schema.js";
 
@@ -53,8 +53,13 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
   const debugW = opts.debugWidth ?? 960;
   const layout = sceneLayout(plan.master, plan.look, plan.output.aspect);
   const work = mkdtempSync(join(tmpdir(), "camerawork-preview-"));
+  const sinks: FrameSink[] = [];
+  const unguard = cleanupOnSignal(work, () => sinks);
   try {
-    const assets = await makeLookAssets(layout, plan.look, work);
+    const assets = await makeLookAssets(layout, plan.look, work, {
+      fps: plan.output.fps,
+      duration: plan.master.duration,
+    });
     const fps = plan.output.fps;
     const k = debugW / layout.sceneW;
     const dH = even(layout.sceneH * k);
@@ -69,6 +74,7 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
     const sheetFinal = `${opts.out}-sheet.png`;
     const sheetPath = `${opts.out}-sheet.tmp-${process.pid}.png`;
     const sink = new FrameSink(encoderArgs("mp4", debugW, dH, fps, debugPath));
+    sinks.push(sink);
     let nextTile = 0;
     try {
       await readFrames(
@@ -143,6 +149,7 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
     }
     return { sheet: sheetFinal, debug: debugFinal };
   } finally {
+    unguard();
     rmSync(work, { recursive: true, force: true });
   }
 }

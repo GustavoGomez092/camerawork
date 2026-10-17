@@ -1,0 +1,10 @@
+camerawork
+Copyright (c) the camerawork contributors. Licensed under the MIT License (see LICENSE).
+
+The look and feel of camerawork's procedural backdrops (silk, aurora, stripes and the other styles) was inspired by:
+
+  gradflow, animated WebGL gradients for React, by Meer Bahadin
+  https://github.com/meerbahadin/gradflow
+  MIT License
+
+camerawork contains no gradflow code: its backdrop styles are original CPU implementations written for camerawork.

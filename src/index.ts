@@ -1,6 +1,10 @@
+export { STYLE_NAMES, STYLES, type StyleName } from "./backdrops/index.js";
+export { BACKDROPS, type BackdropPreset } from "./backdrops/presets.js";
 export { type DetectOptions, detect } from "./detect/index.js";
+export { type EditorOptions, type EditorSession, openUrl, startEditor } from "./editor/server.js";
 export { CameraworkError } from "./errors.js";
-export { LOOKS, resolveLook } from "./looks.js";
+export { type LookPreviewOptions, lookPreview } from "./look-preview.js";
+export { LOOK_DESCRIPTIONS, LOOKS, resolveLook } from "./looks.js";
 export { type PlanOptions, plan, readChangesFile, readCueFile, readPlan, writeJsonAtomic } from "./plan/index.js";
 export { type PreviewOptions, preview } from "./preview.js";
 export { checkSharpness, type RenderOptions, render } from "./render/index.js";
