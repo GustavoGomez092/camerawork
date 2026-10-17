@@ -1,6 +1,16 @@
 import { STYLE_NAMES, type StyleName } from "../src/backdrops/index.js";
 import type { Look } from "../src/schema.js";
-import { addColor, getPath, RANGES, type Range, removeColor, setPath, shaderFor } from "./state.js";
+import {
+  addColor,
+  currentColors,
+  getPath,
+  RANGES,
+  type Range,
+  removeColor,
+  setPath,
+  shaderFor,
+  withColor,
+} from "./state.js";
 
 export interface Controls {
   /** Shows a look's values (after Reset or a preset). */
@@ -78,21 +88,19 @@ export function buildControls(form: HTMLFormElement, current: () => Look, change
     list.forEach((value, i) => {
       const pick = el("input", { type: "color", value, title: `Colour ${i + 1}` });
       pick.addEventListener("input", () => {
-        const next = [...list];
-        next[i] = pick.value;
-        change(setPath(current(), "backdrop.colors", next), true);
+        change(setPath(current(), "backdrop.colors", withColor(currentColors(current()), i, pick.value)), true);
       });
       pick.addEventListener("change", () => change(current(), false));
       const remove = el("button", { type: "button", textContent: "×", title: "Remove", disabled: list.length <= 2 });
       remove.addEventListener("click", () => {
-        change(setPath(current(), "backdrop.colors", removeColor(list, i)), false);
+        change(setPath(current(), "backdrop.colors", removeColor(currentColors(current()), i)), false);
         sync(current());
       });
       colors.append(pick, remove);
     });
     const add = el("button", { type: "button", textContent: "+ colour", disabled: list.length >= 5 });
     add.addEventListener("click", () => {
-      change(setPath(current(), "backdrop.colors", addColor(list)), false);
+      change(setPath(current(), "backdrop.colors", addColor(currentColors(current()))), false);
       sync(current());
     });
     colors.append(add);
@@ -102,7 +110,7 @@ export function buildControls(form: HTMLFormElement, current: () => Look, change
     const bd = look.backdrop;
     const shader = bd.type === "shader";
     style.value = shader ? bd.style : "";
-    drawColors(shader ? (bd.colors ?? []) : []);
+    drawColors(currentColors(look));
     for (const [path, [input, out]] of ranges) {
       const value = getPath(look, path);
       input.disabled = path.startsWith("backdrop.") && !shader;

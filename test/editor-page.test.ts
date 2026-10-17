@@ -4,6 +4,7 @@ import { existsSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
   addColor,
+  currentColors,
   getPath,
   RANGES,
   removeColor,
@@ -11,6 +12,7 @@ import {
   setPath,
   shaderFor,
   windowBox,
+  withColor,
 } from "../editor/state.js";
 import { STYLES } from "../src/backdrops/index.js";
 import { EDITOR_ASSETS } from "../src/editor/protocol.js";
@@ -47,6 +49,17 @@ describe("editor state", () => {
     expect(addColor(["#0", "#1", "#2", "#3", "#4"])).toHaveLength(5);
     expect(removeColor(["#000000", "#111111", "#222222"], 1)).toEqual(["#000000", "#222222"]);
     expect(removeColor(["#000000", "#111111"], 0)).toHaveLength(2);
+  });
+
+  test("colour edits build on the look's current colours, and omitted colours fall back to the palette", () => {
+    const look = resolveLook("ultraviolet");
+    const first = setPath(look, "backdrop.colors", withColor(currentColors(look), 0, "#111111"));
+    const second = setPath(first, "backdrop.colors", withColor(currentColors(first), 1, "#222222"));
+    expect(currentColors(second).slice(0, 2)).toEqual(["#111111", "#222222"]);
+    const omitted = shaderFor("waves", LOOKS.hero.backdrop);
+    const bare = { ...look, backdrop: { ...omitted, colors: undefined } } as unknown as typeof look;
+    expect(currentColors(bare)).toEqual(STYLES.waves.colors);
+    expect(addColor(currentColors(bare))).toHaveLength(STYLES.waves.colors.length + 1);
   });
 
   test("every slider's range is valid in the look schema", () => {

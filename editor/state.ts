@@ -64,6 +64,14 @@ export function setPath(look: Look, path: string, value: unknown): Look {
   return copy as unknown as Look;
 }
 
+/** The look's backdrop colours as the page shows them: a shader's own, or its style's palette when omitted. */
+export const currentColors = (look: Look): string[] =>
+  look.backdrop.type === "shader" ? [...shaderColors(look.backdrop)] : [];
+
+/** The colours with colour i replaced. */
+export const withColor = (colors: string[], i: number, value: string): string[] =>
+  colors.map((c, j) => (j === i ? value : c));
+
 /** One more colour (a copy of the last), at most 5. */
 export const addColor = (colors: string[]): string[] =>
   colors.length >= 5 ? colors : [...colors, colors[colors.length - 1] as string];
