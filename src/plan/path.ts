@@ -32,8 +32,9 @@ export type PathShot = Shot & { weight?: number };
  * - an auto shot whose visit would make a later, more salient shot unreachable by that shot's `end + minHold` (while
  *   skipping it keeps that shot reachable) is skipped: later, larger changes win;
  * - a shot is visited only if the camera can still get there before the video ends (in a loop: and get back to wide);
- * - while zoomed in, an auto shot whose target is already inside the view (less a small inset) does not move the
- *   camera: the current view is kept and its hold extended (R-b).
+ * - while zoomed in, an auto shot whose target is already inside the view (less a small inset) and whose zoom is
+ *   within panZoomTolerance of the current one does not move the camera: the current view is kept and its hold
+ *   extended (R-b), unless an idle drift to wide comes first (then the shot gets its own framing).
  */
 export function buildKeyframes(
   shots: PathShot[],
@@ -106,14 +107,23 @@ export function buildKeyframes(
 
   shots.forEach((s, i) => {
     const isCue = s.source === "cue";
-    // Stay if visible (R-b): while zoomed in, an auto shot whose target is already in view keeps the current view and
-    // only extends the hold. A cue may still re-frame; a wide camera still zooms in.
-    const target = !isCue && cur.zoom > 1 + 1e-6 && inView(cur, s.rect) ? cur : s.view;
     const overlaps = on !== undefined && s.start < on.end;
     if (!isCue && on && overlaps && weight(s) <= weight(on)) return; // overshadowed by the current shot
     // A more salient shot (or a cue) during the current one may cut its hold down to minHold.
     const leaveAt = overlaps ? Math.min(free, onArrived + p.minHold) : free;
     const arriveBy = arriveByOf(s);
+    const idleLeave = Math.max(leaveAt, prevEnd + p.idleWide);
+    // Stay if visible (R-b): while zoomed in, an auto shot whose target is already in view, and whose own zoom is
+    // within panZoomTolerance of the current one, keeps the current view and only extends the hold. A cue may still
+    // re-frame; a wide camera (or a near-wide one, which would otherwise hold every later change "in view") still
+    // zooms in; and when the camera has time to drift wide first, it comes back to the shot's own framing.
+    const stays =
+      !isCue &&
+      cur.zoom > 1 + 1e-6 &&
+      s.view.zoom <= cur.zoom * (1 + p.panZoomTolerance) &&
+      inView(cur, s.rect) &&
+      idleLeave + move(cur, wide) + move(wide, s.view) > arriveBy;
+    const target = stays ? cur : s.view;
     // Non-loop: a first shot the camera cannot reach from wide in time opens the video already framed.
     const opens = !started && !loop && arriveBy < move(wide, target);
     const arrive =
@@ -140,7 +150,6 @@ export function buildKeyframes(
     const window = arriveBy - free;
     const outD = move(cur, wide);
     const inD = move(wide, target);
-    const idleLeave = Math.max(free, prevEnd + p.idleWide);
     const idleFits = idleLeave + outD + inD <= arriveBy;
     if (same(cur, target)) {
       if (!same(cur, wide) && idleFits) {

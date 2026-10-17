@@ -1,9 +1,11 @@
 import { describe, expect, test } from "bun:test";
 import { sceneLayout } from "../src/geometry.js";
 import { LOOKS } from "../src/looks.js";
+import type { PlanEvent } from "../src/plan/cues.js";
 import { cameraAt } from "../src/plan/interp.js";
 import { buildKeyframes, MIN_MOVE, moveDuration } from "../src/plan/path.js";
-import { DEFAULT_PLANNER as P, type Shot } from "../src/schema.js";
+import { clusterShots } from "../src/plan/shots.js";
+import { DEFAULT_PLANNER as P, type Shot, type View } from "../src/schema.js";
 
 const layout = sceneLayout({ width: 1920, height: 1080 }, LOOKS.flat, 16 / 9);
 const wide = { cx: 960, cy: 540, zoom: 1 };
@@ -184,5 +186,52 @@ describe("stay while the next target is already in view (R-b)", () => {
     const cue: Shot = { ...shot(3, 4, 600, 450, 2.2), source: "cue" };
     const k = buildKeyframes([A, cue], layout, P, 9, true);
     expect(k.some((f) => sameV(f, cue.view))).toBe(true);
+  });
+
+  test("a target touching the window edge that the view already sits on stays (no inset on that side)", () => {
+    const corner = shot(1, 2, 480, 270, 2); // view x 0..960, y 0..540: at the window's left and top edges
+    const B: Shot = { ...shot(3, 4, 436, 245, 2.2), rect: [2, 100, 40, 20] }; // 2 px from the left edge
+    const k = buildKeyframes([corner, B], layout, P, 9, true);
+    expect(k.some((f) => sameV(f, B.view))).toBe(false);
+    expect(cameraAt(k, 4 + P.minHold - 0.01)).toEqual(corner.view);
+  });
+});
+
+describe("stay if visible, real-geometry repros (R-b review)", () => {
+  const hero = sceneLayout({ width: 3840, height: 2160 }, LOOKS.hero, 16 / 9);
+  const p = { ...P, maxZoom: 1.83 };
+  const ev = (t: number, rect: [number, number, number, number], weight: number): PlanEvent => ({
+    start: t,
+    end: t + 1 / 15,
+    rect,
+    source: "auto",
+    weight,
+  });
+  const near = (a: View, b: View) =>
+    Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5 && Math.abs(a.zoom - b.zoom) < 1e-3;
+
+  test("after an idle drift to wide, the camera frames the new shot itself, not the old view", () => {
+    const shots = clusterShots([ev(1, [2000, 300, 1200, 600], 200000), ev(10, [2100, 400, 40, 20], 400)], hero, p);
+    expect(shots).toHaveLength(2);
+    const first = shots[0] as Shot;
+    const second = shots[1] as Shot;
+    const k = buildKeyframes(shots, hero, p, 16, true);
+    const wideAt = k.findIndex((f, i) => i > 0 && f.zoom === 1);
+    expect(wideAt).toBeGreaterThan(0);
+    const after = k.slice(wideAt);
+    expect(after.some((f) => near(f, second.view))).toBe(true);
+    expect(after.some((f) => near(f, first.view))).toBe(false);
+  });
+
+  test("a near-wide zoomed view does not freeze later zoom-ins on small changes inside it", () => {
+    const shots = clusterShots(
+      [ev(1, [100, 100, 3600, 1800], 900000), ev(4, [300, 300, 60, 30], 900), ev(7, [3000, 1500, 60, 30], 900)],
+      hero,
+      p,
+    );
+    expect(shots).toHaveLength(3);
+    expect((shots[0] as Shot).view.zoom).toBeLessThan(1.1);
+    const k = buildKeyframes(shots, hero, p, 14, true);
+    for (const s of shots.slice(1)) expect(k.some((f) => near(f, s.view))).toBe(true);
   });
 });
