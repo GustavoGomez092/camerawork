@@ -88,12 +88,13 @@ All coordinates are in **master pixels**, origin top-left. Times are seconds fro
 
 ## 4. Detection (`detect`)
 
-1. ffmpeg decodes the master to grayscale at 1/8 of its size and 15 fps (`-vf fps=15,scale=iw/8:-1,format=gray`,
-   raw frames on a pipe).
+1. ffmpeg decodes the master to grayscale at 15 fps, scaled to an analysis width of about 960 px (so a typed glyph
+   on a 4K master is still several pixels tall), raw frames on a pipe.
 2. Each frame is differenced against the previous one; pixels whose change exceeds a threshold (default 12/255)
    form a mask.
 3. The mask is grouped into connected regions; regions closer than 2 % of the frame width are merged; regions
-   smaller than a minimum area (default 0.02 % of the frame) are dropped.
+   smaller than a minimum area (default 0.004 % of the analysis frame, at least 4 px) are dropped. Each change
+   carries its changed-pixel count (its weight, used for salience in §5.2).
 4. **Blink filter:** a region that reappears in the same place (IoU ≥ 0.6) at a steady period between 0.3 s and
    1.5 s, at least three times, is a blink (text cursor, spinner) and is dropped.
 5. **Masks:** user rectangles (`--mask`, or `masks` in cues) are zeroed before step 3.
@@ -126,10 +127,21 @@ h], strength, fullFrame? }] }` with `strength` = changed-pixel fraction of the r
 
 ### 5.2 Shots
 
-Changes (detected, minus ignored, plus cues) are clustered into **shots**: consecutive changes join the current
-shot when they start within 0.6 s of its last change and their union still fits the maximum-zoom-out frame. A
-typing burst therefore becomes one shot whose target grows with the text. Each shot has `start`, `end` and a target
-rectangle (the union of its changes).
+Changes (detected, minus ignored, plus cues) are clustered into **shots** by salience:
+
+- **One focus per moment.** Changes within `shotJoinGap` (0.6 s) of each other form a moment. Its regions are grouped
+  heaviest first; a region joins a group only when the union still frames within `panZoomTolerance` of the group's
+  first region. The group with the most changed pixels is the moment's focus; the rest are dropped (a toolbar or
+  status-bar redraw does not pull the camera away from the main change). Use `--mask` for chrome that outweighs the
+  real action.
+- **Growing shots.** A moment whose focus frames close to the current shot extends it, so a typing burst becomes one
+  shot whose target grows with the text.
+- Cues and full-frame (wide) changes are always their own shots and are never merged or dropped.
+
+Each shot has `start`, `end`, a target rectangle and a weight.
+
+(This replaces the original rule "join when the union still fits the maximum-zoom-out frame", which is vacuous —
+everything fits at zoom 1 — and on a real recording turned one UI update into a tour of every region that changed.)
 
 ### 5.3 Framing and moves
 
@@ -139,6 +151,9 @@ rectangle (the union of its changes).
 - **Pan vs zoom out:** when the next shot's zoom is within ±30 % of the current one, the camera pans directly (the
   hero's chat-box → diff move). Otherwise, if the gap between shots is ≥ 1.0 s, it eases out toward wide and back
   in; if the gap is shorter it zooms directly to the new framing.
+- **Missed moments are skipped:** an auto shot the camera cannot reach before it ends (plus `minHold`), or whose
+  visit would make the camera miss a later, heavier shot, is skipped; the camera prefers later and larger changes.
+  Cue shots are never skipped.
 - **Anticipation:** the camera reaches each shot's framing 0.35 s before the shot starts (planning is offline).
 - **Calm:** each shot is held ≥ 1.2 s; pan speed is capped at 0.6 scene-widths per second and zoom rate at 1.5×
   per second (moves lengthen to respect the caps); every move uses ease-in-out (cubic). After 2.5 s without
