@@ -1,0 +1,61 @@
+---
+name: camerawork
+description: Use when turning a screen recording into a guided product video (zoom and pan to what changes, on a backdrop with a rounded window), or re-rendering a site's demo videos. Runs the camerawork CLI, checks the plan visually, and fixes it with cues or masks.
+---
+
+# camerawork: guided video tours from screen recordings
+
+camerawork finds where a recording changes, plans a calm camera that zooms and pans to each change, and renders it
+with a presentation look. Requires `camerawork` (`npm install -g camerawork`) and ffmpeg 6+ on PATH.
+
+## Workflow
+
+1. **Get a master.** A high-resolution recording, ideally twice the output width (a 3840-px master for a 1920-px
+   video); deeper zooms need more pixels. Scripted captures are best; hand recordings work too.
+2. **Plan.** `camerawork plan master.mov -o plan.json --look hero --loop` (add `--cues cues.json` if the capture
+   wrote one; `--loop` for website loops). It prints the shot count and the effective max zoom.
+3. **Preview.** `camerawork preview plan.json` writes `plan-sheet.png` (the contact sheet: one tile per 0.5 s;
+   yellow = camera, red = detected change, cyan = cue) and `plan-debug.mp4`.
+4. **Read the contact sheet** (open the PNG and look at it). Check that:
+   - every important moment is inside the yellow box when it happens (typing, a result, a panel opening);
+   - nothing important is cut off at the box's edge;
+   - the camera is not chasing noise (a spinner, a clock, a blinking cursor);
+   - a loop rests wide at its start and end.
+5. **Fix**, then plan and preview again:
+   - camera chases noise → `--mask x,y,w,h` (master pixels) or `"masks"` in cues.json;
+   - too twitchy → `--min-hold 2`;
+   - too zoomed (text too big) → `--max-zoom 1.6`;
+   - misses the important part → add a cue (below);
+   - a stretch should be ignored → an ignore cue.
+6. **Render.** `camerawork render plan.json -o public/videos/feature` writes `feature.mp4`, `feature.webm` and
+   `feature.jpg`. Then look at the poster and a couple of frames
+   (`ffmpeg -ss 3 -i feature.mp4 -frames:v 1 frame.png`).
+
+`plan.json` is the source of truth: edit its keyframes or look and run `render` again without re-planning.
+
+## cues.json
+
+```json
+{ "version": 1,
+  "masks": [[3700, 0, 140, 40]],
+  "planner": { "maxZoom": 2 },
+  "cues": [
+    { "t": 3.2, "rect": [1083, 26, 261, 57], "zoom": 2.0, "hold": 1.5, "label": "filter chips" },
+    { "t": 8.0, "wide": true },
+    { "from": 5.0, "to": 6.0, "ignore": true } ] }
+```
+
+Times are seconds from the master's first frame; rects are master pixels `[x, y, w, h]`. A cue wins over detection
+inside its window. From a capture script: time cues from the moment recording actually started, and convert element
+rectangles (window points) to master pixels by multiplying by the display's backing scale.
+
+## Looks
+
+`--look hero` (gradient backdrop, 9 % padding, rounded corners, shadow), `--look flat` (the window alone), or
+`--look my-look.json` (any look object; `backdrop` can be `{ "type": "image", "path": "bg.jpg" }`).
+
+## Errors worth knowing
+
+- "would upscale": the master is too small for that output width at that zoom → lower `--width` or `--max-zoom`, or
+  record a bigger master.
+- "larger than the …-byte limit": lower `--width` or `--fps`, or raise `--max-bytes`.
