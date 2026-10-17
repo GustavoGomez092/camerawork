@@ -39,7 +39,7 @@ await render(p, { out: "out/feature" });
 The package ships a Claude skill that runs the whole workflow, including checking the contact sheet:
 
 ```bash
-ln -s "$(npm root -g)/camerawork/skills/camerawork" ~/.claude/skills/camerawork
+mkdir -p ~/.claude/skills && ln -sfn "$(npm root -g)/camerawork/skills/camerawork" ~/.claude/skills/camerawork
 ```
 
 ## How it works

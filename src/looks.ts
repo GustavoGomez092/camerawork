@@ -34,7 +34,7 @@ export const LOOKS = {
 /** A preset by name (a fresh copy), or a look object validated against the schema. */
 export function resolveLook(look: string | Look): Look {
   if (typeof look !== "string") return parseWith(LookSchema, look, "look");
-  const preset = (LOOKS as Record<string, Look>)[look];
+  const preset = Object.hasOwn(LOOKS, look) ? (LOOKS as Record<string, Look>)[look] : undefined;
   if (!preset) throw new CameraworkError(`unknown look "${look}" (known: ${Object.keys(LOOKS).join(", ")})`);
   return structuredClone(preset);
 }

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { CameraworkError, parseWith } from "../src/errors.js";
 import { LOOKS, resolveLook } from "../src/looks.js";
-import { CueFileSchema, DEFAULT_PLANNER, LookSchema, PlannerParamsSchema, PlanSchema } from "../src/schema.js";
+import { CueFileSchema, DEFAULT_PLANNER, LookSchema, OutputSchema, PlannerParamsSchema, PlanSchema } from "../src/schema.js";
 
 describe("cue files", () => {
   test("accept focus, wide and ignore cues, masks and planner overrides", () => {
@@ -64,6 +64,18 @@ describe("looks", () => {
     expect(resolveLook({ ...LOOKS.flat, padding: 0.05 }).padding).toBe(0.05);
     expect(() => resolveLook("sparkly")).toThrow('unknown look "sparkly" (known: hero, flat)');
     expect(() => resolveLook({ ...LOOKS.flat, padding: 0.6 })).toThrow(CameraworkError);
+  });
+});
+
+describe("hardening", () => {
+  test("Object.prototype names are not looks", () => {
+    for (const name of ["constructor", "__proto__", "toString"])
+      expect(() => resolveLook(name)).toThrow(/unknown look/);
+  });
+
+  test("duplicate output formats are rejected", () => {
+    const out = { width: 640, fps: 30, formats: ["mp4", "mp4"], poster: null, maxBytes: null, aspect: 1.5, quality: "medium" };
+    expect(() => parseWith(OutputSchema, out, "output")).toThrow(CameraworkError);
   });
 });
 

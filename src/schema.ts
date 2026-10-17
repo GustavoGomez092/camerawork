@@ -129,7 +129,10 @@ export const OutputSchema = z
       .positive()
       .refine((w) => w % 2 === 0, "must be even"),
     fps: z.number().positive(),
-    formats: z.array(z.enum(["mp4", "webm"])).min(1),
+    formats: z
+      .array(z.enum(["mp4", "webm"]))
+      .min(1)
+      .refine((f) => new Set(f).size === f.length, "must not repeat a format"),
     poster: z.enum(["jpg", "webp"]).nullable(),
     maxBytes: z.number().int().positive().nullable(),
     aspect: z.number().positive(),
