@@ -79,3 +79,62 @@ describe("buildKeyframes", () => {
     }
   });
 });
+
+const consistent = (k: { t: number; cx: number; cy: number; zoom: number }[]) => {
+  for (let i = 1; i < k.length; i++) {
+    const a = k[i - 1] as (typeof k)[number];
+    const b = k[i] as (typeof k)[number];
+    expect(b.t).toBeGreaterThanOrEqual(a.t);
+    if (b.t === a.t) expect(b).toEqual(a);
+  }
+};
+const capsHold = (k: ReturnType<typeof buildKeyframes>, slack = 1e-6) => {
+  for (let i = 1; i < k.length; i++) {
+    const a = k[i - 1] as (typeof k)[number];
+    const b = k[i] as (typeof k)[number];
+    if (a.cx === b.cx && a.cy === b.cy && a.zoom === b.zoom) continue;
+    expect(b.t - a.t).toBeGreaterThanOrEqual(moveDuration(a, b, layout, P) - slack);
+  }
+};
+const A = [500, 400, 2] as const;
+
+describe("fix round 1", () => {
+  test("minHold holds after a same-view drift-and-return", () => {
+    const k = buildKeyframes(
+      [shot(1, 2, ...A), shot(10, 10.2, ...A), shot(10.5, 11, 1500, 700, 2)],
+      layout,
+      P,
+      16,
+      false,
+    );
+    consistent(k);
+    const back = 10 - P.anticipation;
+    expect(cameraAt(k, back + P.minHold - 0.01)).toEqual({ cx: 500, cy: 400, zoom: 2 });
+  });
+
+  test("a loop never hard-cuts to wide at the duration", () => {
+    const k = buildKeyframes([shot(1, 5.8, ...A), shot(5.9, 6, 1500, 700, 2)], layout, P, 6, true);
+    consistent(k);
+    expect(k[k.length - 1]).toEqual({ t: 6, ...wide });
+  });
+
+  test("time-ordered with equal times meaning equal views, across scenarios", () => {
+    consistent(buildKeyframes([shot(5.8, 5.9, ...A)], layout, P, 6, false));
+    consistent(buildKeyframes([shot(1, 5.8, ...A), shot(5.9, 6, 1500, 700, 2)], layout, P, 6, false));
+    consistent(buildKeyframes([shot(1.5, 2, 300, 300, 2.2), shot(2.6, 3, 1600, 800, 2.2)], layout, P, 9, true));
+  });
+
+  test("a big zoom change with a short gap eases out partway (zoomOutGap)", () => {
+    const k = buildKeyframes([shot(1, 2, 500, 400, 2.2), shot(4.35, 5, 1300, 700, 1.3)], layout, P, 9, false);
+    consistent(k);
+    capsHold(k);
+    expect(k.some((f) => f.t > 1.5 && f.zoom > 1 && f.zoom < 1.3)).toBe(true);
+  });
+
+  test("idle drift waits idleWide after the last shot", () => {
+    const k = buildKeyframes([shot(1, 2, ...A)], layout, P, 12, false);
+    expect(cameraAt(k, 2 + P.idleWide - 0.1)).toEqual({ cx: 500, cy: 400, zoom: 2 });
+    expect(cameraAt(k, 2 + P.idleWide + 0.3).zoom).toBeLessThan(2);
+    capsHold(k);
+  });
+});
