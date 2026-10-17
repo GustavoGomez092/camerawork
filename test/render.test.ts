@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import { existsSync, readdirSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CameraworkError } from "../src/errors.js";
 import { probe, readFrames } from "../src/ffmpeg.js";
@@ -86,4 +87,40 @@ describe("render (end to end)", () => {
     await expect(render(p, { out: join(dir, "o") })).rejects.toThrow("larger than the 100-byte limit");
     expect(existsSync(join(dir, "o.mp4"))).toBe(false);
   });
+
+  test("checkSharpness names the plan's maxZoom when only that is exceeded", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 1, boxes: [] });
+    const p = await plan(master, { look: "flat", output: { width: 320, formats: ["mp4"], poster: null } });
+    p.maxZoom = 1.5;
+    (p.keyframes[0] as (typeof p.keyframes)[number]).zoom = 1.8; // 320 * 1.8 < 640: sharp, but over maxZoom
+    expect(() => checkSharpness(p)).toThrow(CameraworkError);
+    expect(() => checkSharpness(p)).toThrow("maxZoom of 1.5");
+  });
+
+  // pgrep -P lists direct children of this test process: any ffmpeg left behind is an orphaned encoder.
+  const childFfmpegs = () =>
+    spawnSync("pgrep", ["-P", String(process.pid), "ffmpeg"], { encoding: "utf8" }).stdout.trim();
+
+  test("a dead encoder (output in a missing directory) rejects instead of hanging", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 2, boxes: [] });
+    const p = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4", "webm"], poster: null } });
+    await expect(render(p, { out: join(dir, "no such dir", "o") })).rejects.toThrow(CameraworkError);
+    expect(readdirSync(dir).some((f) => f.includes(".tmp-"))).toBe(false);
+    expect(childFfmpegs()).toBe("");
+  }, 15000);
+
+  test("a master that disappears after planning rejects and leaves nothing running", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 2, boxes: [] });
+    const p = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4", "webm"], poster: "jpg" } });
+    rmSync(master);
+    await expect(render(p, { out: join(dir, "o") })).rejects.toThrow(CameraworkError);
+    expect(readdirSync(dir).filter((f) => f.includes(".tmp-") || f.startsWith("o."))).toEqual([]);
+    expect(childFfmpegs()).toBe("");
+  }, 15000);
 });

@@ -176,4 +176,10 @@ export class FrameSink {
     this.proc.stdin.end();
     return this.done;
   }
+
+  /** Kills the process and resolves once it has exited. Never rejects. */
+  async kill(): Promise<void> {
+    if (!this.exited) this.proc.kill("SIGKILL");
+    await this.done.catch(() => {});
+  }
 }

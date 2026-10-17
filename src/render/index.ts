@@ -20,11 +20,16 @@ export interface RenderOptions {
 /** Refuses any plan that would upscale (spec §6.3, ruling R5). */
 export function checkSharpness(plan: Plan): void {
   const deepest = Math.max(1, ...plan.keyframes.map((k) => k.zoom));
-  if (plan.output.width * deepest > plan.scene.width + 1e-6 || deepest > plan.maxZoom + 1e-6)
+  const sharpMax = plan.scene.width / plan.output.width;
+  if (plan.output.width * deepest > plan.scene.width + 1e-6)
     throw new CameraworkError(
       `zoom ${deepest.toFixed(2)} at ${plan.output.width} px would upscale the ${plan.scene.width}-px scene. ` +
-        `Keep zoom at or below ${(plan.scene.width / plan.output.width).toFixed(2)}, lower the output width, ` +
-        "or record a bigger master.",
+        `Keep zoom at or below ${sharpMax.toFixed(2)}, lower the output width, or record a bigger master.`,
+    );
+  if (deepest > plan.maxZoom + 1e-6)
+    throw new CameraworkError(
+      `zoom ${deepest.toFixed(2)} exceeds the plan's maxZoom of ${plan.maxZoom}. ` +
+        `Keep zoom at or below ${plan.maxZoom}: re-run plan or edit the keyframes.`,
     );
 }
 
@@ -42,14 +47,15 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
   const work = mkdtempSync(join(tmpdir(), "camerawork-"));
   const tmp = (ext: string) => `${opts.out}.tmp-${process.pid}.${ext}`;
   const written: [string, string][] = [];
+  const sinks: FrameSink[] = [];
   try {
     const assets = await makeLookAssets(layout, plan.look, work);
     const codec = pickWebmCodec();
-    const sinks = plan.output.formats.map((format) => {
+    for (const format of plan.output.formats) {
       const path = tmp(format);
       written.push([path, `${opts.out}.${format}`]);
-      return new FrameSink(encoderArgs(format, outW, outH, plan.output.fps, path, codec));
-    });
+      sinks.push(new FrameSink(encoderArgs(format, outW, outH, plan.output.fps, path, codec)));
+    }
     const camera = new Camera(layout.sceneW, layout.sceneH, outW, outH, plan.output.quality);
     const total = Math.round(plan.master.duration * plan.output.fps);
     await readFrames(
@@ -59,8 +65,8 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
         const frame = camera.frame(scene, cameraAt(plan.keyframes, i / plan.output.fps));
         if (i === 0 && plan.output.poster) {
           const path = tmp(plan.output.poster);
-          writeFileSync(path, camera.encode(plan.output.poster));
           written.push([path, `${opts.out}.${plan.output.poster}`]);
+          writeFileSync(path, camera.encode(plan.output.poster));
         }
         await Promise.all(sinks.map((s) => s.write(frame)));
         opts.onProgress?.(i + 1, total);
@@ -79,6 +85,7 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
     for (const [path, final] of written) renameSync(path, final);
     return written.map(([, final]) => final);
   } catch (error) {
+    await Promise.all(sinks.map((s) => s.kill()));
     for (const [path] of written) rmSync(path, { force: true });
     throw error;
   } finally {
