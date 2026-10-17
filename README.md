@@ -64,8 +64,7 @@ cp -R "$(npm root -g)/camerawork/skills/camerawork" ~/.claude/skills/camerawork
 versions then link the global install to a temporary checkout that npm deletes, which leaves a broken `camerawork`
 command (seen with npm 11.6 and 11.21 on a local git URL). The installer therefore always packs first, as above.
 
-Publishing to the npm registry is planned: once published, `npm install -g camerawork` will work. It is not
-available yet.
+camerawork is not published to the npm registry: install it from GitHub as above.
 
 ### Requirements
 
