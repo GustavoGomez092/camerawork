@@ -12,6 +12,9 @@ export interface Box {
   x: number;
   y: number;
   size: number;
+  /** Width and height, when the box is not square (default `size`). */
+  w?: number;
+  h?: number;
   from: number;
   to: number;
   color?: string;
@@ -24,7 +27,7 @@ export async function makeBoxVideo(
 ): Promise<void> {
   const draws = opts.boxes.map(
     (b) =>
-      `drawbox=x=${b.x}:y=${b.y}:w=${b.size}:h=${b.size}:color=${b.color ?? "red"}:t=fill:enable='between(t,${b.from},${b.to})'`,
+      `drawbox=x=${b.x}:y=${b.y}:w=${b.w ?? b.size}:h=${b.h ?? b.size}:color=${b.color ?? "red"}:t=fill:enable='between(t,${b.from},${b.to})'`,
   );
   await runFfmpeg([
     "-f",

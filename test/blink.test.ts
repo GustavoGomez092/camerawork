@@ -26,6 +26,11 @@ describe("filterBlinks", () => {
     expect(filterBlinks([0.5, 0.9, 2.4, 2.7].map((t) => at(t)))).toHaveLength(4);
   });
 
+  test("a cursor that blinks, hides for a while (a palette has focus) and blinks again is dropped everywhere", () => {
+    const blinks = [0.07, 0.53, 2.73, 3.27, 3.73, 4.27, 4.73, 5.27].map((t) => at(t));
+    expect(filterBlinks(blinks)).toEqual([]);
+  });
+
   test("full-frame changes always survive", () => {
     const full = [1, 2, 3].map((t): Change => ({ t, rect: [0, 0, 1920, 1080], strength: 1, fullFrame: true }));
     expect(filterBlinks(full)).toHaveLength(3);
