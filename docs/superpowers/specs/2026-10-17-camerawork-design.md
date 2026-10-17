@@ -146,7 +146,9 @@ rectangle (the union of its changes).
 - **Loops:** `--loop` forces the first and last keyframe to the wide framing so a looping site video restarts
   cleanly.
 - Parameters above are defaults, settable by flags or a `planner` object in the cue file, and written into
-  `plan.json`.
+  `plan.json`. Their names: `margin` (0.12), `maxZoom` (2.2), `panZoomTolerance` (0.3), `zoomOutGap` (1.0 s),
+  `anticipation` (0.35 s), `minHold` (1.2 s), `maxPanSpeed` (0.6), `maxZoomRate` (1.5), `idleWide` (2.5 s),
+  `shotJoinGap` (0.6 s).
 
 ### 5.4 Plan file
 
