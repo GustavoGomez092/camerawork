@@ -33,6 +33,9 @@ export async function renderFrames(
   onFrame: (index: number, px: Uint8ClampedArray) => void | Promise<void>,
   threads = backdropThreads(),
 ): Promise<void> {
+  if (!Number.isInteger(frames) || frames < 0)
+    throw new RangeError(`frames must be a non-negative integer, got ${frames}`);
+  if (frames === 0) return;
   // Bun runs the TypeScript sources (tests); Node runs the compiled .js next to this file.
   const url = new URL(`./backdrop-worker.${import.meta.url.endsWith(".ts") ? "ts" : "js"}`, import.meta.url);
   const workers = Array.from({ length: Math.max(1, Math.min(threads, frames)) }, () => new Worker(url));
@@ -41,9 +44,17 @@ export async function renderFrames(
   const idle = [...workers];
   let sent = 0;
   let written = 0;
+  let failed = false;
   try {
     await new Promise<void>((resolve, reject) => {
       let chain = Promise.resolve();
+      // The first failure wins: nothing more is sent to onFrame or the workers once it is set.
+      const fail = (error: unknown) => {
+        if (failed) return;
+        failed = true;
+        reject(error);
+        for (const worker of workers) void worker.terminate();
+      };
       const pump = () => {
         while (idle.length > 0 && sent < frames && sent - written < limit) {
           const job: FrameJob = { bd, w, h, frame: sent++, frames };
@@ -51,23 +62,25 @@ export async function renderFrames(
         }
       };
       for (const worker of workers) {
-        worker.on("error", reject);
+        worker.on("error", fail);
         worker.on("exit", (code) => {
-          if (written < frames) reject(new Error(`a backdrop worker exited early (code ${code})`));
+          if (written < frames) fail(new Error(`a backdrop worker exited early (code ${code})`));
         });
         worker.on("message", (done: FrameDone) => {
+          if (failed) return;
           ready.set(done.frame, done.px);
           idle.push(worker);
           chain = chain
             .then(async () => {
-              for (let px = ready.get(written); px; px = ready.get(written)) {
+              for (let px = ready.get(written); px && !failed; px = ready.get(written)) {
                 ready.delete(written);
                 await onFrame(written++, px);
               }
+              if (failed) return;
               if (written === frames) resolve();
               else pump();
             })
-            .catch(reject);
+            .catch(fail);
         });
       }
       pump();

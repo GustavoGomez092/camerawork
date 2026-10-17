@@ -36,7 +36,12 @@ export function shaderCanvas(bd: ShaderBackdrop, w: number, h: number, t = 0): C
 }
 
 /** Frames in one loop of an animated backdrop: the master's duration at the output fps, at least 1. */
-export const motionFrameCount = (duration: number, fps: number): number => Math.max(1, Math.round(duration * fps));
+export function motionFrameCount(duration: number, fps: number): number {
+  if (!Number.isFinite(duration) || !Number.isFinite(fps)) {
+    throw new RangeError(`duration and fps must be finite numbers, got ${duration} and ${fps}`);
+  }
+  return Math.max(1, Math.round(duration * fps));
+}
 
 /** ffmpeg args for the intermediate video: raw RGBA on stdin → H.264 RGB, CRF 12 (near-lossless, fast to write). */
 export function intermediateArgs(w: number, h: number, fps: number, out: string): string[] {

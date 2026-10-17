@@ -87,6 +87,40 @@ describe("animated shader backdrops", () => {
     ).rejects.toThrow("sink died");
   });
 
+  test("renderFrames stops calling onFrame once it has rejected", async () => {
+    const calls: number[] = [];
+    await expect(
+      renderFrames(
+        moving(),
+        32,
+        18,
+        40,
+        async (i) => {
+          calls.push(i);
+          await new Promise((r) => setTimeout(r, 5));
+          if (i === 2) throw new Error("sink died at 2");
+        },
+        4,
+      ),
+    ).rejects.toThrow("sink died at 2");
+    const seen = calls.length;
+    await new Promise((r) => setTimeout(r, 300));
+    expect(calls).toHaveLength(seen);
+    expect(Math.max(...calls)).toBeLessThan(40);
+  }, 20_000);
+
+  test("renderFrames resolves for 0 frames and rejects a non-integer count; motionFrameCount rejects NaN", async () => {
+    let n = 0;
+    await renderFrames(moving(), 16, 16, 0, () => {
+      n++;
+    });
+    expect(n).toBe(0);
+    await expect(renderFrames(moving(), 16, 16, Number.NaN, () => {})).rejects.toThrow(RangeError);
+    await expect(renderFrames(moving(), 16, 16, 2.5, () => {})).rejects.toThrow(RangeError);
+    expect(() => motionFrameCount(Number.NaN, 30)).toThrow(RangeError);
+    expect(() => motionFrameCount(2, Number.POSITIVE_INFINITY)).toThrow(RangeError);
+  });
+
   test("the intermediate video is field-sized, one loop long, and loops seamlessly", async () => {
     const dir = tmpDir();
     const out = join(dir, "backdrop.mp4");
