@@ -6,16 +6,44 @@ description: Use when turning a screen recording into a guided product video (zo
 # camerawork: guided video tours from screen recordings
 
 camerawork finds where a recording changes, plans a calm camera that zooms and pans to each change, and renders it
-with a presentation look. Requires `camerawork` (`npm install -g camerawork`) and ffmpeg 6+ on PATH.
+with a presentation look.
+
+## Setup
+
+Before first use, check the engine:
+
+```bash
+command -v camerawork && camerawork --version
+```
+
+If it is missing, run the installer that ships next to this skill (the skill loader shows this skill's base
+directory):
+
+```bash
+bash "<this skill's base directory>/install.sh" --engine-only
+```
+
+If that file is not there, fetch it:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/GustavoGomez092/camerawork/main/skills/camerawork/install.sh | bash -s -- --engine-only
+```
+
+The same script installs ffmpeg and ffprobe 6+ when they are missing (brew, apt-get, dnf or pacman; it announces
+sudo first). It needs Node 20+ and exits with instructions if that is missing; ask the user before installing
+Node yourself. `--no-ffmpeg` skips ffmpeg, `--upgrade` reinstalls the engine.
 
 ## Workflow
 
 1. **Get a master.** A high-resolution recording, ideally twice the output width (a 3840-px master for a 1920-px
    video); deeper zooms need more pixels. Scripted captures are best; hand recordings work too.
 2. **Plan.** `camerawork plan master.mov -o plan.json --look hero --loop` (add `--cues cues.json` if the capture
-   wrote one; `--loop` for website loops). It prints the shot count and the effective max zoom.
+   wrote one; `--loop` for website loops). It prints the shot count and the effective max zoom. All output options
+   (`--width`, `--fps`, `--formats`, `--poster`, `--max-bytes`, `--quality`, `--look`, `--loop`) belong to `plan`:
+   `preview` and `render` reject them with exit code 2.
 3. **Preview.** `camerawork preview plan.json` writes `plan-sheet.png` (the contact sheet: one tile per 0.5 s;
-   yellow = camera, red = detected change, cyan = cue) and `plan-debug.mp4`.
+   yellow = camera, red = detected change, cyan = cue) and `plan-debug.mp4`. `-o <prefix>` changes the names
+   (`<prefix>-sheet.png`, `<prefix>-debug.mp4`).
 4. **Read the contact sheet** (open the PNG and look at it). Check that:
    - every important moment is inside the yellow box when it happens (typing, a result, a panel opening);
    - nothing important is cut off at the box's edge;
@@ -52,10 +80,14 @@ rectangles (window points) to master pixels by multiplying by the display's back
 ## Looks
 
 `--look hero` (gradient backdrop, 9 % padding, rounded corners, shadow), `--look flat` (the window alone), or
-`--look my-look.json` (any look object; `backdrop` can be `{ "type": "image", "path": "bg.jpg" }`).
+`--look my-look.json` (a path ending in `.json`: a full look object with `backdrop`, `padding`, `radius`, `shadow`
+and `tilt`; `backdrop` can be `{ "type": "image", "path": "bg.jpg" }`, relative to the plan file).
 
 ## Errors worth knowing
 
 - "would upscale": the master is too small for that output width at that zoom → lower `--width` or `--max-zoom`, or
   record a bigger master.
-- "larger than the …-byte limit": lower `--width` or `--fps`, or raise `--max-bytes`.
+- "larger than the …-byte limit": plan again with a lower `--width` or `--fps`, or a higher `--max-bytes`.
+- `camerawork: command not found` or ffmpeg missing: run the Setup step above.
+- `camerawork detect master.mov -o changes.json` writes just the detected changes; pass them to `plan` with
+  `--changes changes.json` to re-plan without re-detecting.
