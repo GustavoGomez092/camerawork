@@ -1,0 +1,27 @@
+import { hasEncoder } from "../ffmpeg.js";
+
+export const pickWebmCodec = (): "av1" | "vp9" => (hasEncoder("libsvtav1") ? "av1" : "vp9");
+
+/** ffmpeg args that read raw RGBA frames on stdin and encode one web format (spec §6.2). */
+export function encoderArgs(
+  format: "mp4" | "webm",
+  width: number,
+  height: number,
+  fps: number,
+  out: string,
+  codec: "av1" | "vp9" = "av1",
+): string[] {
+  const input = ["-f", "rawvideo", "-pix_fmt", "rgba", "-s", `${width}x${height}`, "-r", String(fps), "-i", "-"];
+  if (format === "mp4")
+    return [
+      ...input,
+      ...["-c:v", "libx264", "-preset", "slow", "-crf", "20", "-pix_fmt", "yuv420p", "-movflags", "+faststart"],
+      ...["-f", "mp4", out],
+    ];
+  if (codec === "av1")
+    return [...input, "-c:v", "libsvtav1", "-crf", "32", "-preset", "6", "-pix_fmt", "yuv420p", "-f", "webm", out];
+  return [
+    ...input,
+    ...["-c:v", "libvpx-vp9", "-crf", "32", "-b:v", "0", "-row-mt", "1", "-pix_fmt", "yuv420p", "-f", "webm", out],
+  ];
+}
