@@ -166,14 +166,15 @@ export function buildKeyframes(
   const back = move(cur, wide);
   if (!same(cur, wide)) {
     const lastT = (kfs[kfs.length - 1] as Keyframe).t;
+    const drift = Math.max(free, prevEnd + p.idleWide);
     if (loop) {
-      // Reserve the whole capped move back to wide: the hold is cut short, never the move.
-      const leave = Math.max(lastT, duration - back);
+      // Drift wide after idleWide, or at the latest leave with the whole capped move back to wide still ahead:
+      // the hold is cut short, never the move.
+      const leave = Math.max(lastT, Math.min(drift, duration - back));
       push(leave, cur);
       push(leave + back, wide);
       cur = wide;
     } else {
-      const drift = Math.max(free, prevEnd + p.idleWide);
       if (drift + back <= duration) {
         push(drift, cur);
         push(drift + back, wide);

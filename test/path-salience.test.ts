@@ -125,6 +125,15 @@ describe("loop end and move caps (C1c)", () => {
     expectCalm(k, 6, true);
   });
 
+  test("a loop still drifts back to wide idleWide after the last shot when the video goes on", () => {
+    const s = shot(1, 2, { cx: 600, cy: 400, zoom: 2 }, 5000);
+    const k = buildKeyframes([s], layout, P, 12, true);
+    expectCalm(k, 12, true);
+    const back = moveDuration(s.view, wide, layout, P);
+    expect(cameraAt(k, 2 + P.idleWide - 0.05)).toEqual(s.view);
+    expect(cameraAt(k, 2 + P.idleWide + back + 0.01)).toEqual(wide);
+  });
+
   test("a video too short for one capped move makes exactly one compressed move", () => {
     const s = shot(0.1, 0.2, { cx: 600, cy: 400, zoom: 2.2 }, 5000, "cue");
     expectCalm(buildKeyframes([s], layout, P, 1, true), 1, true);
