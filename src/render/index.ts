@@ -48,7 +48,9 @@ export function checkMaster(plan: Plan): void {
   if (Math.abs(now.duration - m.duration) > 0.1)
     diffs.push(`duration is ${now.duration.toFixed(2)} s, the plan was made for ${m.duration.toFixed(2)} s`);
   if (diffs.length)
-    throw new CameraworkError(`the master ${path} has changed since planning: ${diffs.join("; ")}. Re-run camerawork plan.`);
+    throw new CameraworkError(
+      `the master ${path} has changed since planning: ${diffs.join("; ")}. Re-run camerawork plan.`,
+    );
 }
 
 const even = (n: number) => Math.round(n / 2) * 2;

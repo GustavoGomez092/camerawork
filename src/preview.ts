@@ -1,14 +1,16 @@
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createCanvas, ImageData } from "@napi-rs/canvas";
+import { createCanvas, ImageData, type SKRSContext2D } from "@napi-rs/canvas";
+import { CameraworkError } from "./errors.js";
 import { FrameSink, readFrames, requireFfmpeg } from "./ffmpeg.js";
 import { sceneLayout } from "./geometry.js";
 import { cameraAt } from "./plan/interp.js";
 import { makeLookAssets } from "./render/assets.js";
 import { encoderArgs } from "./render/encode.js";
+import { checkMaster } from "./render/index.js";
 import { sceneArgs } from "./render/scene.js";
-import type { Plan } from "./schema.js";
+import type { Plan, Shot } from "./schema.js";
 
 export interface PreviewOptions {
   out: string;
@@ -29,9 +31,22 @@ function scaled(args: string[], w: number, h: number): string[] {
   });
 }
 
+/** Draws numbered shot boxes (red for auto, cyan for cue) with `k` mapping scene pixels to the canvas. */
+function drawShots(ctx: SKRSContext2D, shots: [number, Shot][], k: number, font: number): void {
+  for (const [n, s] of shots) {
+    ctx.strokeStyle = s.source === "cue" ? "#33ddff" : "#ff4466";
+    ctx.lineWidth = 2;
+    ctx.strokeRect(s.rect[0] * k, s.rect[1] * k, s.rect[2] * k, s.rect[3] * k);
+    ctx.fillStyle = "#ffffff";
+    ctx.font = `${font}px sans-serif`;
+    ctx.fillText(`#${n + 1}`, s.rect[0] * k, Math.max(font, s.rect[1] * k - 4));
+  }
+}
+
 /** A contact sheet and a debug video showing the camera's frame (yellow), auto shots (red) and cues (cyan). */
 export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet: string; debug: string }> {
   requireFfmpeg();
+  checkMaster(plan);
   const every = opts.every ?? 0.5;
   const columns = opts.columns ?? 6;
   const tileW = opts.tileWidth ?? 480;
@@ -49,7 +64,10 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
     const sctx = sheetCanvas.getContext("2d");
     const frameCanvas = createCanvas(debugW, dH);
     const fctx = frameCanvas.getContext("2d");
-    const debugPath = `${opts.out}-debug.mp4`;
+    const debugFinal = `${opts.out}-debug.mp4`;
+    const debugPath = `${opts.out}-debug.tmp-${process.pid}.mp4`;
+    const sheetFinal = `${opts.out}-sheet.png`;
+    const sheetPath = `${opts.out}-sheet.tmp-${process.pid}.png`;
     const sink = new FrameSink(encoderArgs("mp4", debugW, dH, fps, debugPath));
     let nextTile = 0;
     try {
@@ -69,15 +87,12 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
           fctx.lineWidth = 3;
           fctx.strokeStyle = "#ffcc00";
           fctx.strokeRect(v.cx * k - vw / 2, v.cy * k - vh / 2, vw, vh);
-          for (const [n, s] of plan.shots.entries()) {
-            if (t < s.start - 0.05 || t > s.end + 0.05) continue;
-            fctx.strokeStyle = s.source === "cue" ? "#33ddff" : "#ff4466";
-            fctx.lineWidth = 2;
-            fctx.strokeRect(s.rect[0] * k, s.rect[1] * k, s.rect[2] * k, s.rect[3] * k);
-            fctx.fillStyle = "#ffffff";
-            fctx.font = "18px sans-serif";
-            fctx.fillText(`#${n + 1}`, s.rect[0] * k, Math.max(18, s.rect[1] * k - 4));
-          }
+          drawShots(
+            fctx,
+            [...plan.shots.entries()].filter(([, s]) => t >= s.start - 0.05 && t <= s.end + 0.05),
+            k,
+            18,
+          );
           fctx.fillStyle = "rgba(0,0,0,0.6)";
           fctx.fillRect(0, 0, 96, 30);
           fctx.fillStyle = "#ffffff";
@@ -91,19 +106,42 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
               tileW,
               tileH,
             );
+            // Auto shots are shorter than a tile: draw every shot that overlaps this tile's time span.
+            sctx.save();
+            sctx.translate((nextTile % columns) * tileW, Math.floor(nextTile / columns) * tileH);
+            sctx.beginPath();
+            sctx.rect(0, 0, tileW, tileH);
+            sctx.clip();
+            const t0 = nextTile * every;
+            drawShots(
+              sctx,
+              [...plan.shots.entries()].filter(([, s]) => s.start < t0 + every && s.end >= t0),
+              (k * tileW) / debugW,
+              12,
+            );
+            sctx.restore();
             nextTile++;
           }
           await sink.write(Buffer.from(frameCanvas.data())); // copied: the canvas is redrawn next frame
         },
       );
+      await sink.end();
+      try {
+        writeFileSync(sheetPath, sheetCanvas.toBuffer("image/png"));
+      } catch (error) {
+        throw new CameraworkError(
+          `cannot write the contact sheet ${sheetFinal}: ${(error as Error).message}. Check that the output directory exists and is writable.`,
+        );
+      }
+      renameSync(debugPath, debugFinal);
+      renameSync(sheetPath, sheetFinal);
     } catch (error) {
       await sink.kill();
+      rmSync(debugPath, { recursive: true, force: true });
+      rmSync(sheetPath, { recursive: true, force: true });
       throw error;
     }
-    await sink.end();
-    const sheetPath = `${opts.out}-sheet.png`;
-    writeFileSync(sheetPath, sheetCanvas.toBuffer("image/png"));
-    return { sheet: sheetPath, debug: debugPath };
+    return { sheet: sheetFinal, debug: debugFinal };
   } finally {
     rmSync(work, { recursive: true, force: true });
   }

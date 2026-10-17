@@ -74,7 +74,9 @@ function checkOutputDir(out: string): void {
     ok = false;
   }
   if (!ok)
-    throw new CameraworkError(`cannot write ${out}: the directory ${dir} does not exist or is not writable. Create it or choose another -o.`);
+    throw new CameraworkError(
+      `cannot write ${out}: the directory ${dir} does not exist or is not writable. Create it or choose another -o.`,
+    );
 }
 
 const defined = (o: Record<string, unknown>) =>
@@ -118,7 +120,12 @@ async function main(argv: string[]): Promise<void> {
   };
   checkFlags(command, Object.keys(values));
   if (command === "detect" || command === "plan" || command === "render")
-    checkOutputDir(need(values.out, command === "plan" ? "-o <plan.json>" : command === "detect" ? "-o <changes.json>" : "-o <prefix>"));
+    checkOutputDir(
+      need(
+        values.out,
+        command === "plan" ? "-o <plan.json>" : command === "detect" ? "-o <changes.json>" : "-o <prefix>",
+      ),
+    );
   if (command === "preview" && values.out) checkOutputDir(values.out);
   const masks = (values.mask ?? []).map(rect);
   switch (command) {
