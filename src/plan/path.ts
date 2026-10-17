@@ -1,7 +1,7 @@
 import type { SceneLayout } from "../geometry.js";
 import type { Keyframe, PlannerParams, Shot, View } from "../schema.js";
-import { wideView } from "./framing.js";
-import { weightOf } from "./shots.js";
+import { placeView, viewRect, wideView, windowBox } from "./framing.js";
+import { contains, weightOf } from "./shots.js";
 
 /** The shortest camera move, in seconds. */
 export const MIN_MOVE = 0.4;
@@ -16,6 +16,9 @@ export function moveDuration(a: View, b: View, layout: SceneLayout, p: PlannerPa
   return Math.max(MIN_MOVE, pan, zoom);
 }
 
+/** Share of the view's width kept as an inset when deciding a target is already in view. */
+const IN_VIEW_INSET = 0.02;
+
 /** A shot as the path sees it: with its weight (changed pixels) when the planner measured one. */
 export type PathShot = Shot & { weight?: number };
 
@@ -28,7 +31,9 @@ export type PathShot = Shot & { weight?: number };
  * - a stale auto shot, one the camera can only reach after `end + minHold`, is skipped;
  * - an auto shot whose visit would make a later, more salient shot unreachable by that shot's `end + minHold` (while
  *   skipping it keeps that shot reachable) is skipped: later, larger changes win;
- * - a shot is visited only if the camera can still get there before the video ends (in a loop: and get back to wide).
+ * - a shot is visited only if the camera can still get there before the video ends (in a loop: and get back to wide);
+ * - while zoomed in, an auto shot whose target is already inside the view (less a small inset) does not move the
+ *   camera: the current view is kept and its hold extended (R-b).
  */
 export function buildKeyframes(
   shots: PathShot[],
@@ -62,14 +67,20 @@ export function buildKeyframes(
     push(arrive - move(mid, to), mid);
     push(arrive, to);
   };
-  const midView = (a: View, b: View, zm: number): View => {
-    const vw = layout.sceneW / zm;
-    const vh = layout.sceneH / zm;
-    return {
-      cx: Math.min(layout.sceneW - vw / 2, Math.max(vw / 2, (a.cx + b.cx) / 2)),
-      cy: Math.min(layout.sceneH - vh / 2, Math.max(vh / 2, (a.cy + b.cy) / 2)),
-      zoom: zm,
-    };
+  const midView = (a: View, b: View, zm: number): View => placeView((a.cx + b.cx) / 2, (a.cy + b.cy) / 2, zm, layout);
+  const [bx, by, bw, bh] = windowBox(layout);
+  /**
+   * Is `rect` already well inside the zoomed view `v`? An inset of IN_VIEW_INSET of the view width is kept on each
+   * side, except where the view already sits at the window's edge (moving could not show more there).
+   */
+  const inView = (v: View, rect: Shot["rect"]): boolean => {
+    const [x, y, w, h] = viewRect(v, layout);
+    const d = IN_VIEW_INSET * w;
+    const l = x <= bx + 0.5 ? 0 : d;
+    const t = y <= by + 0.5 ? 0 : d;
+    const r = x + w >= bx + bw - 0.5 ? 0 : d;
+    const b = y + h >= by + bh - 0.5 ? 0 : d;
+    return contains([x + l, y + t, w - l - r, h - t - b], rect);
   };
   /** The widest in-between view (zoom below both ends) that both halves of a move can reach inside `window`. */
   const partialWide = (from: View, to: View, window: number): View | undefined => {
@@ -94,8 +105,10 @@ export function buildKeyframes(
   let onArrived = 0;
 
   shots.forEach((s, i) => {
-    const target = s.view;
     const isCue = s.source === "cue";
+    // Stay if visible (R-b): while zoomed in, an auto shot whose target is already in view keeps the current view and
+    // only extends the hold. A cue may still re-frame; a wide camera still zooms in.
+    const target = !isCue && cur.zoom > 1 + 1e-6 && inView(cur, s.rect) ? cur : s.view;
     const overlaps = on !== undefined && s.start < on.end;
     if (!isCue && on && overlaps && weight(s) <= weight(on)) return; // overshadowed by the current shot
     // A more salient shot (or a cue) during the current one may cut its hold down to minHold.

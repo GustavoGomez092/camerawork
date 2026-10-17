@@ -138,3 +138,51 @@ describe("fix round 1", () => {
     capsHold(k);
   });
 });
+
+describe("stay while the next target is already in view (R-b)", () => {
+  const A = shot(1, 2, 500, 400, 2); // view x 20..980, y 130..670
+  const sameV = (a: { cx: number; cy: number; zoom: number }, b: { cx: number; cy: number; zoom: number }) =>
+    Math.abs(a.cx - b.cx) < 0.5 && Math.abs(a.cy - b.cy) < 0.5 && Math.abs(a.zoom - b.zoom) < 1e-3;
+  /** Every keyframe from the arrival at A until the loop's return to wide is A's view. */
+  const heldOnA = (k: ReturnType<typeof buildKeyframes>) => {
+    const first = k.findIndex((f) => sameV(f, A.view));
+    expect(first).toBeGreaterThan(0);
+    const rest = k.slice(first);
+    let lastA = rest.length - 1;
+    while (lastA > 0 && !sameV(rest[lastA] as (typeof rest)[number], A.view)) lastA--;
+    for (const f of rest.slice(0, lastA + 1)) expect(f).toMatchObject(A.view);
+    for (const f of rest.slice(lastA + 1)) expect(f).toMatchObject(wide);
+  };
+
+  test("a later shot whose target lies inside the zoomed view does not move the camera", () => {
+    const B = shot(3, 4, 600, 450, 2.2);
+    const C = shot(4.5, 4.6, 400, 300, 2.1);
+    const k = buildKeyframes([A, B, C], layout, P, 9, true);
+    heldOnA(k);
+    // the hold extends to the last shot inside the view
+    expect(cameraAt(k, 4.6 + P.minHold - 0.01)).toEqual(A.view);
+  });
+
+  test("a later shot outside the view still moves", () => {
+    const B = shot(3, 4, 1500, 700, 2.2);
+    const k = buildKeyframes([A, B], layout, P, 9, true);
+    expect(k.some((f) => sameV(f, B.view))).toBe(true);
+  });
+
+  test("a target touching the view's edge (inside the 2 % inset) still moves", () => {
+    const B: Shot = { ...shot(3, 4, 950, 400, 2.2), rect: [930, 390, 45, 20] }; // right edge 975 of 980
+    const k = buildKeyframes([A, B], layout, P, 9, true);
+    expect(k.some((f) => sameV(f, B.view))).toBe(true);
+  });
+
+  test("a wide camera still zooms into a small target", () => {
+    const k = buildKeyframes([shot(2, 3, 600, 450, 2.2)], layout, P, 8, true);
+    expect(k.some((f) => f.zoom === 2.2)).toBe(true);
+  });
+
+  test("a cue inside the view still re-frames", () => {
+    const cue: Shot = { ...shot(3, 4, 600, 450, 2.2), source: "cue" };
+    const k = buildKeyframes([A, cue], layout, P, 9, true);
+    expect(k.some((f) => sameV(f, cue.view))).toBe(true);
+  });
+});
