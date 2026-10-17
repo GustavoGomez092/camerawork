@@ -69,7 +69,7 @@ describe("looks", () => {
     hero.padding = 0.2;
     expect(LOOKS.hero.padding).toBe(0.09);
     expect(resolveLook({ ...LOOKS.flat, padding: 0.05 }).padding).toBe(0.05);
-    expect(() => resolveLook("sparkly")).toThrow('unknown look "sparkly" (known: hero, flat)');
+    expect(() => resolveLook("sparkly")).toThrow('unknown look "sparkly" (looks: hero, flat; backdrops: ultraviolet');
     expect(() => resolveLook({ ...LOOKS.flat, padding: 0.6 })).toThrow(CameraworkError);
   });
 });
