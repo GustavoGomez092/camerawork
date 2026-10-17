@@ -69,8 +69,9 @@ export function cleanupOnSignal(work: string, sinks: () => FrameSink[]): () => v
       for (const sink of sinks()) sink.killNow();
       rmSync(work, { recursive: true, force: true });
       remove();
-      // Nobody else listening means the default action (exit by the signal) is back once ours are removed.
-      process.kill(process.pid, sig);
+      // Re-raise only when nobody else listens: then the default action (exit by the signal) applies. If the host app
+      // has its own handler, it already ran for this signal and decides what happens next.
+      if (process.listenerCount(sig) === 0) process.kill(process.pid, sig);
     };
     handlers.set(sig, fn);
     process.once(sig, fn);

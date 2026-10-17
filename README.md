@@ -385,7 +385,7 @@ look; Reset goes back to the starting look. Without `--master` the window is a n
 `camerawork plan master.mov -o plan.json --look my-look.json`.
 
 For agents: run `look edit` with `--no-open`, give the user the printed URL and wait for the command to exit (0 means
-saved, 1 means closed without saving). Non-interactive shells ignore SIGINT for background jobs, so stop an abandoned
+saved, 1 means closed without saving or timed out). Non-interactive shells ignore SIGINT for background jobs, so stop an abandoned
 editor with SIGTERM (`kill <pid>`), or let it time out: it ends 120 s after the page stops pinging, or 15 minutes
 after start if no page ever connects.
 

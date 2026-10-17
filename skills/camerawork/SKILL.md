@@ -100,16 +100,15 @@ Before planning, ask the user which they want: the default `hero` look, a preset
 
   It opens a browser page (add `--no-open` when there is no browser on this machine, and `--port N` for a fixed
   port). Wait for the command to exit: exit 0 means the user pressed Save and `<dir>/look.json` exists; exit 1 means
-  the page was closed without saving (nothing written). If the user abandons the editor, stop it with SIGTERM
+  the page was closed without saving or the editor timed out (nothing written). If the user abandons the editor, stop it with SIGTERM
   (`kill <pid>`): a background job in a non-interactive shell ignores SIGINT. It also ends by itself 120 s after the
   page stops pinging, or 15 minutes after start if no page connects. Then `camerawork plan master.mov -o plan.json --look
   <dir>/look.json`.
 
 A look file is a full object with `backdrop`, `padding`, `radius`, `shadow` and `tilt`. `backdrop` can be a gradient,
-a solid colour, `{ "type": "image", "path": "bg.jpg" }` (relative to the look file, or to the plan file inside
-plan.json), or a procedural
-`{ "type": "shader", "style": "silk", "colors": [...], "motion": { "enabled": true, "speed": 0.3 } }` (styles: silk,
-waves, aurora, mesh, stripes, ripple, linear, radial, conic). Motion makes the backdrop loop seamlessly over the
+a solid colour, `{ "type": "image", "path": "bg.jpg" }` (relative to the look file, or to the plan file inside plan.json),
+or a procedural `{ "type": "shader", "style": "silk", "colors": [...], "motion": { "enabled": true, "speed": 0.3 } }`
+(styles: silk, waves, aurora, mesh, stripes, ripple, linear, radial, conic). Motion makes the backdrop loop seamlessly over the
 video; it costs render time (roughly 20–45 ms per frame on 8 cores).
 
 ## Errors worth knowing
