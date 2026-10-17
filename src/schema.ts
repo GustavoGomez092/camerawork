@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { STYLE_NAMES } from "./backdrops/types.js";
 
 export const RectSchema = z.tuple([z.number(), z.number(), z.number().positive(), z.number().positive()]);
 export type Rect = [number, number, number, number];
@@ -100,8 +101,27 @@ export const BackdropSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("solid"), color }).strict(),
   z.object({ type: z.literal("image"), path: z.string().min(1) }).strict(),
   z.object({ type: z.literal("none") }).strict(),
+  z
+    .object({
+      type: z.literal("shader"),
+      style: z.enum(STYLE_NAMES),
+      colors: z.array(color).min(2).max(5).optional(),
+      angle: z.number().min(0).max(360).default(45),
+      scale: z.number().min(0.2).max(5).default(1),
+      distortion: z.number().min(0).max(1).default(0.3),
+      seed: z.number().int().default(1),
+      grain: z.number().min(0).max(0.3).default(0.04),
+      vignette: z.number().min(0).max(1).default(0),
+      motion: z
+        .object({ enabled: z.boolean().default(false), speed: z.number().min(0.05).max(2).default(0.3) })
+        .strict()
+        .default({ enabled: false, speed: 0.3 }),
+    })
+    .strict(),
 ]);
 export type Backdrop = z.infer<typeof BackdropSchema>;
+/** A procedural backdrop (spec: backdrops §3). `colors` left out means the style's own palette. */
+export type ShaderBackdrop = Extract<Backdrop, { type: "shader" }>;
 
 export const LookSchema = z
   .object({
