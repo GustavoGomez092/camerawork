@@ -3,6 +3,7 @@ import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { CameraworkError } from "../src/errors.js";
 import { plan, readCueFile, readPlan, writeJsonAtomic } from "../src/plan/index.js";
+import type { ChangesFile } from "../src/schema.js";
 import { makeBoxVideo, tmpDir } from "./helpers.js";
 
 describe("plan", () => {
@@ -54,5 +55,61 @@ describe("plan", () => {
     const path = join(tmpDir(), "bad.json");
     writeFileSync(path, "{ nope");
     expect(() => readCueFile(path)).toThrow(`${path} is not valid JSON`);
+  });
+  test("a changes file from a different-size video is rejected", async () => {
+    const master = join(tmpDir(), "m.mp4");
+    await makeBoxVideo(master, { width: 1280, height: 720, fps: 30, seconds: 2, boxes: [] });
+    const changes: ChangesFile = {
+      version: 1,
+      master: { path: "x.mp4", width: 640, height: 360, fps: 30, duration: 2 },
+      changes: [],
+    };
+    const err = await plan(master, { changes, look: "flat", output: { width: 640 } }).catch((e) => e);
+    expect(err).toBeInstanceOf(CameraworkError);
+    expect(err.message).toContain("640x360");
+    expect(err.message).toContain("1280x720");
+  });
+
+  test("masks from options and from the cue file both reach detection", async () => {
+    const master = join(tmpDir(), "m.mp4");
+    await makeBoxVideo(master, {
+      width: 1280,
+      height: 720,
+      fps: 30,
+      seconds: 8,
+      boxes: [
+        { x: 100, y: 100, size: 100, from: 1, to: 3 },
+        { x: 900, y: 450, size: 100, from: 5, to: 7 },
+      ],
+    });
+    const control = await plan(master, { look: "flat", output: { width: 640 } });
+    expect(control.shots.length).toBeGreaterThanOrEqual(2);
+    const masked = await plan(master, {
+      masks: [[80, 80, 140, 140]],
+      cues: { version: 1, masks: [[880, 430, 140, 140]], cues: [] },
+      look: "flat",
+      output: { width: 640 },
+    });
+    expect(masked.shots).toEqual([]);
+  });
+
+  test("planner precedence, and given changes skip detection", async () => {
+    const master = join(tmpDir(), "m.mp4");
+    await makeBoxVideo(master, { width: 1280, height: 720, fps: 30, seconds: 6, boxes: [] });
+    const changes: ChangesFile = {
+      version: 1,
+      master: { path: master, width: 1280, height: 720, fps: 30, duration: 6 },
+      changes: [{ t: 2, rect: [200, 150, 80, 80], strength: 1 }],
+    };
+    const base = { changes, look: "flat", output: { width: 640 } };
+    const both = await plan(master, {
+      ...base,
+      cues: { version: 1, planner: { minHold: 2 }, cues: [] },
+      planner: { minHold: 3 },
+    });
+    expect(both.planner.minHold).toBe(3);
+    const cueOnly = await plan(master, { ...base, cues: { version: 1, planner: { minHold: 2 }, cues: [] } });
+    expect(cueOnly.planner.minHold).toBe(2);
+    expect(cueOnly.shots.length).toBe(1); // from the given file; the video itself has no changes
   });
 });
