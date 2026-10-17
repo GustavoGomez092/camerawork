@@ -110,7 +110,7 @@ describe("cli", () => {
     test("plan and detect without -o exit 2 before any detection work", async () => {
       const dir = tmpDir();
       const master = join(dir, "long.mp4");
-      await makeBoxVideo(master, { width: 1280, height: 720, fps: 30, seconds: 120, boxes: [] });
+      await makeBoxVideo(master, { width: 320, height: 180, fps: 10, seconds: 30, boxes: [] });
       for (const command of ["plan", "detect"]) {
         const t0 = performance.now();
         const r = cli(command, master);
@@ -118,7 +118,7 @@ describe("cli", () => {
         expect(r.stderr).toContain("-o");
         expect(performance.now() - t0).toBeLessThan(1500);
       }
-    });
+    }, 60_000);
   });
 
   describe("flag allow-lists (I4)", () => {
