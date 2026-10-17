@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { CameraworkError } from "../src/errors.js";
 import { probe, readFrames } from "../src/ffmpeg.js";
@@ -121,6 +121,43 @@ describe("render (end to end)", () => {
     rmSync(master);
     await expect(render(p, { out: join(dir, "o") })).rejects.toThrow(CameraworkError);
     expect(readdirSync(dir).filter((f) => f.includes(".tmp-") || f.startsWith("o."))).toEqual([]);
+    expect(childFfmpegs()).toBe("");
+  }, 15000);
+
+  test("a deleted master is named in the error before any encoder starts", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "gone.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 1, boxes: [] });
+    const p = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4"], poster: null } });
+    rmSync(master);
+    await expect(render(p, { out: join(dir, "o") })).rejects.toThrow(master);
+    await expect(render(p, { out: join(dir, "o") })).rejects.toThrow("master");
+  });
+
+  test("a swapped master of another size names both sizes", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 1, boxes: [] });
+    const p = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4"], poster: null } });
+    await makeBoxVideo(master, { width: 800, height: 600, fps: 30, seconds: 1, boxes: [] });
+    const err = await render(p, { out: join(dir, "o") }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CameraworkError);
+    expect((err as Error).message).toContain("640x360");
+    expect((err as Error).message).toContain("800x600");
+    expect((err as Error).message).toContain(master);
+    expect(readdirSync(dir).filter((f) => f.startsWith("o"))).toEqual([]);
+  });
+
+  test("a poster write failure is a CameraworkError and leaves no temps", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 1, boxes: [] });
+    const p = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4"], poster: "jpg" } });
+    mkdirSync(join(dir, `o.tmp-${process.pid}.jpg`)); // the poster's temp name is a directory: writing it fails
+    const err = await render(p, { out: join(dir, "o") }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CameraworkError);
+    expect((err as Error).message).toContain("poster");
+    expect(readdirSync(dir).filter((f) => f.endsWith(".mp4") && f.startsWith("o"))).toEqual([]);
     expect(childFfmpegs()).toBe("");
   }, 15000);
 });

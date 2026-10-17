@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { accessSync, constants, readFileSync, statSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
 import { detect } from "./detect/index.js";
@@ -39,6 +39,43 @@ const rect = (v: string): Rect => {
     throw new UsageError(`--mask must be x,y,w,h, got "${v}"`);
   return parts as Rect;
 };
+
+const OUTPUT_FLAGS = ["width", "fps", "formats", "poster", "max-bytes", "quality", "loop", "look"];
+const PLAN_FLAGS = [...OUTPUT_FLAGS, "out", "mask", "cues", "changes", "max-zoom", "min-hold"];
+const ALLOWED: Record<string, string[]> = {
+  detect: ["out", "mask"],
+  plan: PLAN_FLAGS,
+  preview: ["out"],
+  render: ["out"],
+};
+
+/** Exit 2 for any flag the command does not take. */
+function checkFlags(command: string, given: string[]): void {
+  const allowed = ALLOWED[command];
+  if (!allowed) return;
+  for (const flag of given) {
+    if (allowed.includes(flag) || flag === "version" || flag === "help") continue;
+    if ((command === "render" || command === "preview") && OUTPUT_FLAGS.includes(flag))
+      throw new UsageError(
+        `--${flag} is not an option of ${command}: set output options when planning: camerawork plan <master> -o <plan.json> --${flag} …`,
+      );
+    throw new UsageError(`--${flag} is not an option of ${command}`);
+  }
+}
+
+/** Fails now, before any expensive work, when the output's directory is missing or not writable. */
+function checkOutputDir(out: string): void {
+  const dir = resolve(dirname(out));
+  let ok = false;
+  try {
+    ok = statSync(dir).isDirectory();
+    if (ok) accessSync(dir, constants.W_OK);
+  } catch {
+    ok = false;
+  }
+  if (!ok)
+    throw new CameraworkError(`cannot write ${out}: the directory ${dir} does not exist or is not writable. Create it or choose another -o.`);
+}
 
 const defined = (o: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
@@ -79,6 +116,10 @@ async function main(argv: string[]): Promise<void> {
     if (!v) throw new UsageError(`${command} needs ${what}`);
     return v;
   };
+  checkFlags(command, Object.keys(values));
+  if (command === "detect" || command === "plan" || command === "render")
+    checkOutputDir(need(values.out, command === "plan" ? "-o <plan.json>" : command === "detect" ? "-o <changes.json>" : "-o <prefix>"));
+  if (command === "preview" && values.out) checkOutputDir(values.out);
   const masks = (values.mask ?? []).map(rect);
   switch (command) {
     case "detect": {

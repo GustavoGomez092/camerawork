@@ -1,8 +1,8 @@
-import { mkdtempSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CameraworkError } from "../errors.js";
-import { FrameSink, readFrames, requireFfmpeg } from "../ffmpeg.js";
+import { FrameSink, probe, readFrames, requireFfmpeg } from "../ffmpeg.js";
 import { sceneLayout } from "../geometry.js";
 import { cameraAt } from "../plan/interp.js";
 import type { Plan } from "../schema.js";
@@ -33,11 +33,30 @@ export function checkSharpness(plan: Plan): void {
     );
 }
 
+/** Refuses a missing or changed master (different size or duration) before anything starts. */
+export function checkMaster(plan: Plan): void {
+  const path = plan.master.path;
+  if (!existsSync(path))
+    throw new CameraworkError(
+      `the master ${path} is missing. Restore it (or run camerawork plan again on the video you want to render).`,
+    );
+  const now = probe(path);
+  const m = plan.master;
+  const diffs: string[] = [];
+  if (now.width !== m.width || now.height !== m.height)
+    diffs.push(`size is ${now.width}x${now.height}, the plan was made for ${m.width}x${m.height}`);
+  if (Math.abs(now.duration - m.duration) > 0.1)
+    diffs.push(`duration is ${now.duration.toFixed(2)} s, the plan was made for ${m.duration.toFixed(2)} s`);
+  if (diffs.length)
+    throw new CameraworkError(`the master ${path} has changed since planning: ${diffs.join("; ")}. Re-run camerawork plan.`);
+}
+
 const even = (n: number) => Math.round(n / 2) * 2;
 
 /** Renders a plan: scene (ffmpeg) → camera (Skia) → encoders, all streaming; files appear only on success. */
 export async function render(plan: Plan, opts: RenderOptions): Promise<string[]> {
   requireFfmpeg();
+  checkMaster(plan);
   checkSharpness(plan);
   const layout = sceneLayout(plan.master, plan.look, plan.output.aspect);
   if (layout.sceneW !== plan.scene.width || layout.sceneH !== plan.scene.height)
@@ -66,7 +85,13 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
         if (i === 0 && plan.output.poster) {
           const path = tmp(plan.output.poster);
           written.push([path, `${opts.out}.${plan.output.poster}`]);
-          writeFileSync(path, camera.encode(plan.output.poster));
+          try {
+            writeFileSync(path, camera.encode(plan.output.poster));
+          } catch (error) {
+            throw new CameraworkError(
+              `cannot write the poster ${opts.out}.${plan.output.poster}: ${(error as Error).message}. Check that the output directory exists and is writable.`,
+            );
+          }
         }
         await Promise.all(sinks.map((s) => s.write(frame)));
         opts.onProgress?.(i + 1, total);
