@@ -29,7 +29,8 @@ export function sceneArgs(masterPath: string, layout: SceneLayout, assets: LookA
   if (!assets.mask) return ["-i", masterPath, "-an", "-vf", `fps=${fps},format=rgba`, "-pix_fmt", "rgba"];
   const B = WARP_BORDER;
   const perspective = perspectiveExpr(layout);
-  const inputs = ["-i", masterPath, "-loop", "1", "-i", assets.backdrop, "-loop", "1", "-i", assets.mask];
+  const still = (path: string) => ["-loop", "1", "-framerate", String(fps), "-i", path];
+  const inputs = ["-i", masterPath, ...still(assets.backdrop), ...still(assets.mask)];
   const graph = [
     `[0:v]fps=${fps},format=rgb24,pad=iw+${2 * B}:ih+${2 * B}:${B}:${B}:black${perspective ? `,${perspective}` : ""},format=rgba[v]`,
     "[2:v]format=gray[m]",
@@ -38,7 +39,7 @@ export function sceneArgs(masterPath: string, layout: SceneLayout, assets: LookA
   ];
   let base = "bg";
   if (assets.shadow) {
-    inputs.push("-loop", "1", "-i", assets.shadow);
+    inputs.push(...still(assets.shadow));
     graph.push(`[bg][3:v]overlay=${assets.shadowX}:${assets.shadowY}[bs]`);
     base = "bs";
   }

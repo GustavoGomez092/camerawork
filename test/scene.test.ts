@@ -9,7 +9,7 @@ import { makeBoxVideo, tmpDir } from "./helpers.js";
 
 const pixel = (f: Buffer, w: number, x: number, y: number) => [...f.subarray((y * w + x) * 4, (y * w + x) * 4 + 4)];
 
-async function firstSceneFrame(lookName: "hero" | "flat", tilt = false) {
+async function firstSceneFrame(lookName: "hero" | "flat", tilt = false, fps = 30) {
   const dir = tmpDir();
   const master = join(dir, "m.mp4");
   await makeBoxVideo(master, {
@@ -24,10 +24,12 @@ async function firstSceneFrame(lookName: "hero" | "flat", tilt = false) {
   const layout = sceneLayout({ width: 640, height: 360 }, look, 16 / 9);
   const assets = await makeLookAssets(layout, look, dir);
   let frame = Buffer.alloc(0);
-  await readFrames(sceneArgs(master, layout, assets, 30), layout.sceneW * layout.sceneH * 4, (f, i) => {
+  let count = 0;
+  await readFrames(sceneArgs(master, layout, assets, fps), layout.sceneW * layout.sceneH * 4, (f, i) => {
     if (i === 0) frame = Buffer.from(f);
+    count++;
   });
-  return { layout, frame };
+  return { layout, frame, count };
 }
 
 describe("scene", () => {
@@ -57,6 +59,16 @@ describe("scene", () => {
     expect(perspectiveExpr(layout)).toContain("sense=destination");
     const beside = pixel(frame, layout.sceneW, layout.winX - 4, layout.winY + 20);
     expect(beside[0]).toBeGreaterThan(40);
+  });
+
+  test.each([
+    [false, 30],
+    [true, 30],
+    [false, 15],
+    [true, 15],
+  ])("scene runs at the requested fps (tilt=%p, fps=%p)", async (tilt, fps) => {
+    const { count } = await firstSceneFrame("hero", tilt, fps);
+    expect(count).toBe(fps);
   });
 
   test("untilted layouts have no perspective expression", () => {
