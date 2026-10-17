@@ -111,7 +111,7 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
     return written.map(([, final]) => final);
   } catch (error) {
     await Promise.all(sinks.map((s) => s.kill()));
-    for (const [path] of written) rmSync(path, { force: true });
+    for (const [path] of written) rmSync(path, { recursive: true, force: true });
     throw error;
   } finally {
     rmSync(work, { recursive: true, force: true });
