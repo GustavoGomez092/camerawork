@@ -25,8 +25,8 @@ Usage: install.sh [options]
   --upgrade       reinstall the engine even if camerawork is already on PATH
   -h, --help      show this help
 
-The skill is copied from the installed package (`npm root -g`)/camerawork/skills/camerawork; if the package is not
-installed globally, from the skill directory next to this script (a checkout or the plugin cache).
+The skill is copied from the installed package (found through the camerawork executable, then `npm root -g`); if the
+package is not installed globally, from the skill directory next to this script (a checkout or the plugin cache).
 Requires macOS or Linux, Node 20+ and npm. ffmpeg and ffprobe 6+ are installed with brew, apt-get, dnf or pacman.
 USAGE
 }
@@ -191,7 +191,16 @@ fi
 
 # ---- skill ------------------------------------------------------------------------------------------------------
 find_skill_source() { # prints the directory holding the skill to copy, or nothing
-  local root
+  local bin root
+  # 1. the installed package, found through the camerawork executable (<pkg>/dist/cli.js)
+  if have camerawork && have node; then
+    bin="$(node -p 'require("fs").realpathSync(process.argv[1])' "$(command -v camerawork)" 2>/dev/null || true)"
+    if [ -n "$bin" ] && [ -f "$(dirname "$bin")/../skills/camerawork/SKILL.md" ]; then
+      (cd "$(dirname "$bin")/../skills/camerawork" && pwd)
+      return
+    fi
+  fi
+  # 2. the global npm package
   if have npm; then
     root="$(npm root -g 2>/dev/null || true)"
     if [ -n "$root" ] && [ -f "$root/camerawork/skills/camerawork/SKILL.md" ]; then
@@ -199,6 +208,7 @@ find_skill_source() { # prints the directory holding the skill to copy, or nothi
       return
     fi
   fi
+  # 3. the directory next to this script (a checkout, the plugin cache)
   if [ -n "$SCRIPT_DIR" ] && [ -f "$SCRIPT_DIR/SKILL.md" ]; then printf '%s\n' "$SCRIPT_DIR"; fi
 }
 
