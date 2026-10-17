@@ -21,7 +21,7 @@ import {
 } from "../schema.js";
 import { toEvents, validateCues } from "./cues.js";
 import { buildKeyframes } from "./path.js";
-import { clusterShots } from "./shots.js";
+import { clusterShots, plainShot } from "./shots.js";
 
 export interface PlanOptions {
   cues?: CueFile;
@@ -114,7 +114,7 @@ export async function plan(masterPath: string, opts: PlanOptions = {}): Promise<
     maxZoom,
     loop: opts.loop ?? false,
     scene: { width: layout.sceneW, height: layout.sceneH },
-    shots,
+    shots: shots.map(plainShot),
     keyframes,
   };
 }
