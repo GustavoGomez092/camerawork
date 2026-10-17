@@ -17,7 +17,31 @@ export interface BlinkOptions {
 
 export const DEFAULT_BLINK: BlinkOptions = { minPeriod: 0.3, maxPeriod: 1.5, minRepeats: 3, iou: 0.6, jitter: 0.25 };
 
-/** Drops changes that repeat in one place at a steady rhythm (a text cursor, a spinner). */
+/** Splits one place's changes where it paused for longer than a blink period (a cursor hidden while a palette is open). */
+function splitRuns(g: Change[], opts: BlinkOptions): Change[][] {
+  const runs: Change[][] = [[g[0] as Change]];
+  for (let i = 1; i < g.length; i++) {
+    const c = g[i] as Change;
+    if (c.t - (g[i - 1] as Change).t > opts.maxPeriod * (1 + opts.jitter)) runs.push([c]);
+    else (runs[runs.length - 1] as Change[]).push(c);
+  }
+  return runs;
+}
+
+/** At least `minRepeats` changes at a steady period between `minPeriod` and `maxPeriod`. */
+function isSteady(run: Change[], opts: BlinkOptions): boolean {
+  if (run.length < opts.minRepeats) return false;
+  const gaps = run.slice(1).map((c, i) => c.t - (run[i] as Change).t);
+  const sorted = [...gaps].sort((a, b) => a - b);
+  const median = sorted[Math.floor(sorted.length / 2)] as number;
+  if (median < opts.minPeriod || median > opts.maxPeriod) return false;
+  return gaps.every((x) => Math.abs(x - median) <= median * opts.jitter);
+}
+
+/**
+ * Drops changes that repeat in one place at a steady rhythm (a text cursor, a spinner). Once a place blinks steadily
+ * anywhere in the video, every change there is a blink, including lone ones before or after a pause.
+ */
 export function filterBlinks(changes: Change[], opts: BlinkOptions = DEFAULT_BLINK): Change[] {
   const groups: Change[][] = [];
   for (const c of changes) {
@@ -27,13 +51,6 @@ export function filterBlinks(changes: Change[], opts: BlinkOptions = DEFAULT_BLI
     else groups.push([c]);
   }
   const blinks = new Set<Change>();
-  for (const g of groups) {
-    if (g.length < opts.minRepeats) continue;
-    const gaps = g.slice(1).map((c, i) => c.t - (g[i] as Change).t);
-    const sorted = [...gaps].sort((a, b) => a - b);
-    const median = sorted[Math.floor(sorted.length / 2)] as number;
-    if (median < opts.minPeriod || median > opts.maxPeriod) continue;
-    if (gaps.every((x) => Math.abs(x - median) <= median * opts.jitter)) for (const c of g) blinks.add(c);
-  }
+  for (const g of groups) if (splitRuns(g, opts).some((run) => isSteady(run, opts))) for (const c of g) blinks.add(c);
   return changes.filter((c) => !blinks.has(c));
 }

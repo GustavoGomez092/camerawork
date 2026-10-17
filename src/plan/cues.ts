@@ -9,6 +9,8 @@ export interface PlanEvent {
   source: "auto" | "cue";
   zoom?: number;
   wide?: boolean;
+  /** Changed pixels (master pixels): how much happened. Auto events only; cues outrank everything. */
+  weight?: number;
 }
 
 const after = (what: string, v: number, master: Probe) =>
@@ -65,6 +67,7 @@ export function toEvents(
       end: c.t + frameStep,
       rect: c.rect,
       source: "auto",
+      weight: c.strength * c.rect[2] * c.rect[3],
       ...(c.fullFrame ? { wide: true } : {}),
     });
   }

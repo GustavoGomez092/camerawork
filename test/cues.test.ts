@@ -31,8 +31,13 @@ describe("validateCues", () => {
 describe("toEvents", () => {
   test("auto changes become events lasting one analysis frame", () => {
     expect(toEvents([change(2)], undefined, 1.2, 1 / 15)).toEqual([
-      { start: 2, end: 2 + 1 / 15, rect: [10, 10, 50, 50], source: "auto" },
+      { start: 2, end: 2 + 1 / 15, rect: [10, 10, 50, 50], source: "auto", weight: 2500 },
     ]);
+  });
+
+  test("auto events carry their changed-pixel count as weight (strength × area, master pixels)", () => {
+    const [e] = toEvents([{ t: 1, rect: [0, 0, 40, 50], strength: 0.5 }], undefined, 1.2, 1 / 15);
+    expect(e?.weight).toBe(1000);
   });
 
   test("a cue wins inside its window and ignore ranges drop changes", () => {

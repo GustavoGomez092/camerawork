@@ -4,6 +4,13 @@ import { filterBlinks } from "./blink.js";
 import { diffMask, findRegions, zeroRects } from "./diff.js";
 
 export const ANALYSIS_FPS = 15;
+/**
+ * Widest analysis frame. A fixed width (not a fixed divisor) keeps one typed glyph at a few dozen analysis pixels
+ * whatever the master's resolution: at 1/8 of a 4K master a glyph shrank below the minimum area and typing was lost.
+ */
+export const ANALYSIS_WIDTH = 960;
+/** Smallest region kept, as a fraction of the analysis frame: ≈ 21 px at 960×540, the ink of one small glyph. */
+export const MIN_AREA = 0.00004;
 
 export interface DetectOptions {
   /** Areas to ignore, in master pixels. */
@@ -11,7 +18,7 @@ export interface DetectOptions {
   /** Grayscale change (0–255) a pixel must exceed to count. Default 12. */
   threshold?: number;
   analysisFps?: number;
-  /** Downscale divisor for analysis. Default 8. */
+  /** Downscale divisor for analysis. Default: whatever brings the width down to ANALYSIS_WIDTH (never upscales). */
   scale?: number;
 }
 
@@ -22,7 +29,7 @@ export async function detect(masterPath: string, opts: DetectOptions = {}): Prom
   requireFfmpeg();
   const master = probe(masterPath);
   const fps = opts.analysisFps ?? ANALYSIS_FPS;
-  const div = opts.scale ?? 8;
+  const div = opts.scale ?? Math.max(1, master.width / ANALYSIS_WIDTH);
   const w = Math.max(2, Math.round(master.width / div / 2) * 2);
   const h = Math.max(2, Math.round(master.height / div / 2) * 2);
   const sx = master.width / w;
@@ -31,7 +38,7 @@ export async function detect(masterPath: string, opts: DetectOptions = {}): Prom
     ([x, y, mw, mh]): Rect => [Math.floor(x / sx), Math.floor(y / sy), Math.ceil(mw / sx) + 1, Math.ceil(mh / sy) + 1],
   );
   const mergeDist = Math.max(1, Math.round(w * 0.02));
-  const minCount = Math.max(1, Math.round(w * h * 0.0002));
+  const minCount = Math.max(4, Math.round(w * h * MIN_AREA));
   const threshold = opts.threshold ?? 12;
   const changes: Change[] = [];
   let prev: Uint8Array | null = null;

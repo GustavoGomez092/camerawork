@@ -1,6 +1,7 @@
 import type { SceneLayout } from "../geometry.js";
 import type { Keyframe, PlannerParams, Shot, View } from "../schema.js";
 import { wideView } from "./framing.js";
+import { weightOf } from "./shots.js";
 
 /** The shortest camera move, in seconds. */
 export const MIN_MOVE = 0.4;
@@ -15,9 +16,22 @@ export function moveDuration(a: View, b: View, layout: SceneLayout, p: PlannerPa
   return Math.max(MIN_MOVE, pan, zoom);
 }
 
-/** Camera keyframes for the shots (spec §5.3). Times are clamped to [0, duration] and never decrease. */
+/** A shot as the path sees it: with its weight (changed pixels) when the planner measured one. */
+export type PathShot = Shot & { weight?: number };
+
+/**
+ * Camera keyframes for the shots (spec §5.3). Times are clamped to [0, duration] and never decrease.
+ *
+ * Auto shots compete for the camera (cue shots never are skipped):
+ * - an auto shot that starts while the camera is on a longer shot is ignored unless it is more salient (heavier);
+ *   a more salient one may cut the current shot's hold to `minHold`;
+ * - a stale auto shot, one the camera can only reach after `end + minHold`, is skipped;
+ * - an auto shot whose visit would make a later, more salient shot unreachable by that shot's `end + minHold` (while
+ *   skipping it keeps that shot reachable) is skipped: later, larger changes win;
+ * - a shot is visited only if the camera can still get there before the video ends (in a loop: and get back to wide).
+ */
 export function buildKeyframes(
-  shots: Shot[],
+  shots: PathShot[],
   layout: SceneLayout,
   p: PlannerParams,
   duration: number,
@@ -25,14 +39,15 @@ export function buildKeyframes(
 ): Keyframe[] {
   const wide = wideView(layout);
   const kfs: Keyframe[] = [];
+  const move = (a: View, b: View) => moveDuration(a, b, layout, p);
   const push = (time: number, v: View) => {
     const last = kfs[kfs.length - 1];
     const t = Math.max(last?.t ?? 0, Math.min(duration, Math.max(0, time)));
     if (last && t - last.t < 1e-6) {
       if (same(last, v)) return;
       const before = kfs[kfs.length - 2];
-      // At the very end of the video a move that cannot finish is compressed: the final view replaces the
-      // keyframe already sitting at `duration`, so the last movement is one single move (never a hard cut).
+      // Only when the video is too short for a capped move (or a cue cannot be honoured otherwise): the final view
+      // replaces the keyframe already sitting at `duration`, so the last movement is one single move (never a cut).
       if ((before && same(before, last)) || t >= duration - 1e-6) {
         kfs[kfs.length - 1] = { t, cx: v.cx, cy: v.cy, zoom: v.zoom };
         return;
@@ -43,18 +58,9 @@ export function buildKeyframes(
   /** Leave `from` at `leave`, ease to `mid`, hold it, and ease into `to` exactly at `arrive`. */
   const via = (from: View, leave: number, mid: View, arrive: number, to: View) => {
     push(leave, from);
-    push(leave + moveDuration(from, mid, layout, p), mid);
-    push(arrive - moveDuration(mid, to, layout, p), mid);
+    push(leave + move(from, mid), mid);
+    push(arrive - move(mid, to), mid);
     push(arrive, to);
-  };
-  /** The widest in-between view (zoom below both ends) that both halves of a move can reach inside `window`. */
-  const partialWide = (from: View, to: View, window: number): View | undefined => {
-    const top = Math.min(from.zoom, to.zoom);
-    for (let zm = 1.05; zm < top; zm *= 1.05) {
-      const m = midView(from, to, zm);
-      if (moveDuration(from, m, layout, p) + moveDuration(m, to, layout, p) <= window) return m;
-    }
-    return undefined;
   };
   const midView = (a: View, b: View, zm: number): View => {
     const vw = layout.sceneW / zm;
@@ -65,31 +71,75 @@ export function buildKeyframes(
       zoom: zm,
     };
   };
+  /** The widest in-between view (zoom below both ends) that both halves of a move can reach inside `window`. */
+  const partialWide = (from: View, to: View, window: number): View | undefined => {
+    const top = Math.min(from.zoom, to.zoom);
+    for (let zm = 1.05; zm < top; zm *= 1.05) {
+      const m = midView(from, to, zm);
+      if (move(from, m) + move(m, to) <= window) return m;
+    }
+    return undefined;
+  };
+  const weight = (s: PathShot) => (s.source === "cue" ? Number.POSITIVE_INFINITY : weightOf(s));
+  const arriveByOf = (s: Shot) => Math.max(0, s.start - p.anticipation);
+  const deadline = (s: Shot) => s.end + p.minHold;
+  /** The latest the camera may arrive somewhere and still respect the end of the video. */
+  const lastArrival = (v: View) => (loop ? duration - move(v, wide) : duration);
 
   let cur: View = wide;
-  const first = shots[0];
-  if (!loop && first && first.start - p.anticipation < moveDuration(wide, first.view, layout, p)) cur = first.view;
-  push(0, cur);
+  let started = false; // has the opening keyframe been pushed?
   let free = 0; // earliest the camera may leave its current view
   let prevEnd = 0; // end of the last shot: idle time is counted from here
+  let on: PathShot | undefined; // the shot the camera is on
+  let onArrived = 0;
 
-  for (const s of shots) {
+  shots.forEach((s, i) => {
     const target = s.view;
-    const arriveBy = Math.max(0, s.start - p.anticipation);
+    const isCue = s.source === "cue";
+    const overlaps = on !== undefined && s.start < on.end;
+    if (!isCue && on && overlaps && weight(s) <= weight(on)) return; // overshadowed by the current shot
+    // A more salient shot (or a cue) during the current one may cut its hold down to minHold.
+    const leaveAt = overlaps ? Math.min(free, onArrived + p.minHold) : free;
+    const arriveBy = arriveByOf(s);
+    // Non-loop: a first shot the camera cannot reach from wide in time opens the video already framed.
+    const opens = !started && !loop && arriveBy < move(wide, target);
+    const arrive =
+      opens || same(cur, target)
+        ? Math.max(leaveAt, opens ? 0 : arriveBy)
+        : Math.max(arriveBy, leaveAt + move(cur, target));
+    if (!isCue) {
+      if (arrive > deadline(s) || arrive > lastArrival(target)) return; // stale, or no time left
+      for (const n of shots.slice(i + 1)) {
+        if (weight(n) <= weight(s)) continue;
+        const depart = n.start < s.end ? arrive + p.minHold : Math.max(s.end, arrive + p.minHold);
+        const viaS = Math.max(arriveByOf(n), depart + move(target, n.view));
+        if (viaS <= deadline(n)) continue;
+        const withoutS = Math.max(arriveByOf(n), free + move(cur, n.view));
+        if (withoutS <= deadline(n)) return; // visiting s would lose a more salient shot
+      }
+    }
+    if (!started) {
+      started = true;
+      if (opens) cur = target;
+      push(0, cur);
+    }
+    free = leaveAt;
     const window = arriveBy - free;
-    const outD = moveDuration(cur, wide, layout, p);
-    const inD = moveDuration(wide, target, layout, p);
+    const outD = move(cur, wide);
+    const inD = move(wide, target);
     const idleLeave = Math.max(free, prevEnd + p.idleWide);
     const idleFits = idleLeave + outD + inD <= arriveBy;
     if (same(cur, target)) {
       if (!same(cur, wide) && idleFits) {
         via(cur, idleLeave, wide, arriveBy, target);
         free = Math.max(s.end, arriveBy + p.minHold);
+        onArrived = arriveBy;
       } else free = Math.max(free, s.end);
+      on = s;
       prevEnd = Math.max(prevEnd, s.end);
-      continue;
+      return;
     }
-    const direct = moveDuration(cur, target, layout, p);
+    const direct = move(cur, target);
     const zoomJump = Math.abs(Math.log(target.zoom / cur.zoom)) > Math.log(1 + p.panZoomTolerance);
     const zoomed = !same(cur, wide) && !same(target, wide);
     const mid = zoomed && zoomJump && window >= p.zoomOutGap ? partialWide(cur, target, window) : undefined;
@@ -106,22 +156,30 @@ export function buildKeyframes(
     }
     const arrived = (kfs[kfs.length - 1] as Keyframe).t;
     cur = target;
+    on = s;
+    onArrived = arrived;
     free = Math.max(s.end, arrived + p.minHold);
     prevEnd = Math.max(prevEnd, s.end);
-  }
+  });
 
-  const back = moveDuration(cur, wide, layout, p);
+  if (!started) push(0, cur);
+  const back = move(cur, wide);
   if (!same(cur, wide)) {
+    const lastT = (kfs[kfs.length - 1] as Keyframe).t;
     const drift = Math.max(free, prevEnd + p.idleWide);
     if (loop) {
-      const leave = Math.max(free, duration - back);
+      // Drift wide after idleWide, or at the latest leave with the whole capped move back to wide still ahead:
+      // the hold is cut short, never the move.
+      const leave = Math.max(lastT, Math.min(drift, duration - back));
       push(leave, cur);
       push(leave + back, wide);
       cur = wide;
-    } else if (drift + back <= duration) {
-      push(drift, cur);
-      push(drift + back, wide);
-      cur = wide;
+    } else {
+      if (drift + back <= duration) {
+        push(drift, cur);
+        push(drift + back, wide);
+        cur = wide;
+      }
     }
   }
   push(duration, cur);

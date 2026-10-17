@@ -1,4 +1,5 @@
 import { readFileSync, renameSync, writeFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { ANALYSIS_FPS, detect } from "../detect/index.js";
 import { CameraworkError, parseWith } from "../errors.js";
 import { probe, requireFfmpeg } from "../ffmpeg.js";
@@ -21,7 +22,7 @@ import {
 } from "../schema.js";
 import { toEvents, validateCues } from "./cues.js";
 import { buildKeyframes } from "./path.js";
-import { clusterShots } from "./shots.js";
+import { clusterShots, plainShot } from "./shots.js";
 
 export interface PlanOptions {
   cues?: CueFile;
@@ -54,7 +55,20 @@ export function writeJsonAtomic(path: string, data: unknown): void {
   renameSync(tmp, path);
 }
 
-export const readPlan = (path: string): Plan => parseWith(PlanSchema, readJson(path), path);
+/** Makes the master and a backdrop image absolute, relative paths counting from `base`. */
+function absolutePaths(p: Plan, base: string): Plan {
+  const { backdrop } = p.look;
+  return {
+    ...p,
+    master: { ...p.master, path: resolve(base, p.master.path) },
+    look:
+      backdrop.type === "image" ? { ...p.look, backdrop: { ...backdrop, path: resolve(base, backdrop.path) } } : p.look,
+  };
+}
+
+/** Reads and validates a plan; relative master and backdrop paths count from the plan file's directory. */
+export const readPlan = (path: string): Plan =>
+  absolutePaths(parseWith(PlanSchema, readJson(path), path), dirname(resolve(path)));
 export const readCueFile = (path: string): CueFile => parseWith(CueFileSchema, readJson(path), path) as CueFile;
 export const readChangesFile = (path: string): ChangesFile =>
   parseWith(ChangesFileSchema, readJson(path), path) as ChangesFile;
@@ -105,16 +119,20 @@ export async function plan(masterPath: string, opts: PlanOptions = {}): Promise<
   const effective = { ...planner, maxZoom };
   const shots = clusterShots(events, layout, effective);
   const keyframes = buildKeyframes(shots, layout, effective, master.duration, opts.loop ?? false);
-  return {
-    version: 1,
-    master,
-    output,
-    look,
-    planner,
-    maxZoom,
-    loop: opts.loop ?? false,
-    scene: { width: layout.sceneW, height: layout.sceneH },
-    shots,
-    keyframes,
-  };
+  // Absolute paths, so the plan works from any directory.
+  return absolutePaths(
+    {
+      version: 1,
+      master,
+      output,
+      look,
+      planner,
+      maxZoom,
+      loop: opts.loop ?? false,
+      scene: { width: layout.sceneW, height: layout.sceneH },
+      shots: shots.map(plainShot),
+      keyframes,
+    },
+    process.cwd(),
+  );
 }
