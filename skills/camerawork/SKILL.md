@@ -82,7 +82,7 @@ rectangles (window points) to master pixels by multiplying by the display's back
 Before planning, ask the user which they want: the default `hero` look, a preset, or a look customised in the editor.
 
 - **Default:** `--look hero` (gray gradient, 9 % padding, rounded corners, shadow). `--look flat` is the window alone.
-- **A preset:** `camerawork looks` lists the look and backdrop presets. Any backdrop preset works as a look:
+- **A preset:** `camerawork looks` lists the look and backdrop presets. `hero` is in both lists: the look wins the name, so `--look hero` is the full hero look. Any backdrop preset works as a look:
   `--look ultraviolet` is the hero window on the `ultraviolet` backdrop. Pick 2–3 that suit the product, render a
   still of each on the user's recording, open the PNGs and look at them, show them to the user and let them choose:
 
@@ -99,7 +99,9 @@ Before planning, ask the user which they want: the default `hero` look, a preset
 
   It opens a browser page (add `--no-open` when there is no browser on this machine, and `--port N` for a fixed
   port). Wait for the command to exit: exit 0 means the user pressed Save and `<dir>/look.json` exists; exit 1 means
-  the page was closed without saving (nothing written). Then `camerawork plan master.mov -o plan.json --look
+  the page was closed without saving (nothing written). If the user abandons the editor, stop it with SIGTERM
+  (`kill <pid>`): a background job in a non-interactive shell ignores SIGINT. It also ends by itself 120 s after the
+  page stops pinging, or 15 minutes after start if no page connects. Then `camerawork plan master.mov -o plan.json --look
   <dir>/look.json`.
 
 A look file is a full object with `backdrop`, `padding`, `radius`, `shadow` and `tilt`. `backdrop` can be a gradient,

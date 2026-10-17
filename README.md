@@ -17,7 +17,9 @@ It is a CLI, a Node library and a Claude skill.
 3. **A calm camera**: it arrives slightly early, holds long enough to read, then pans, eases out to the full
    window, or stays put. Speed is capped, and a moment the camera cannot reach in time is skipped rather than
    chased. Loops rest wide at both ends.
-4. **A presentation look**: the window sits on a backdrop with padding, rounded corners and a shadow.
+4. **A presentation look**: the window sits on a backdrop with padding, rounded corners and a shadow. Backdrops can
+   be procedural (silky light, aurora ribbons, mesh gradients, film grain), still or seamlessly animated, picked
+   from presets or designed in a local [look editor](#look-editor).
 5. **Encode**: mp4, webm and a poster, with a refusal to upscale so the output is always sharp.
 
 What you get:
@@ -292,13 +294,15 @@ multiplying by the display's backing scale.
 
 ## Looks
 
-A look is the presentation around the window. Pick a built-in with `--look hero` or `--look flat`, or give a JSON file
-with `--look my-look.json`.
+A look is the presentation around the window. Pick one with `--look`:
 
 - `hero`: a gray gradient backdrop, `padding` 0.09, `radius` 18, a soft shadow, no tilt.
 - `flat`: the window alone: no backdrop, padding, rounding or shadow.
+- any [backdrop preset](#backdrops), such as `--look ultraviolet`: the `hero` window on that backdrop.
+- a JSON file, `--look my-look.json` (write one by hand or with `camerawork look edit`).
 
-A custom look is a full object (all fields required except `preset`):
+`camerawork looks` lists them all. `hero` appears under both Looks and Backdrops: the look preset wins the
+name, so `--look hero` is the full hero look (gray gradient, padding, shadow). A custom look is a full object (all fields required except `preset`):
 
 ```json
 {
@@ -313,11 +317,76 @@ A custom look is a full object (all fields required except `preset`):
 
 | Field | Meaning |
 |---|---|
-| `backdrop` | One of `{ "type": "gradient", "angle": 180, "stops": [{ "at": 0, "color": "#8f8f8f" }, …] }` (at least two stops, `at` from 0 to 1), `{ "type": "solid", "color": "#101010" }`, `{ "type": "image", "path": "bg.jpg" }`, or `{ "type": "none" }`. Colors are `#rrggbb`. An image path is stored absolute in the plan; a relative one counts from the plan file's folder. |
+| `backdrop` | One of `{ "type": "gradient", "angle": 180, "stops": [{ "at": 0, "color": "#8f8f8f" }, …] }` (at least two stops, `at` from 0 to 1), `{ "type": "solid", "color": "#101010" }`, `{ "type": "image", "path": "bg.jpg" }`, `{ "type": "none" }`, or a [shader backdrop](#backdrops). Colors are `#rrggbb`. An image path is stored absolute in the plan; a relative one counts from the plan file's folder. |
 | `padding` | Space around the window as a fraction of the width, 0 to 0.45. |
 | `radius` | Corner radius in pixels at a 1920-px-wide window. |
 | `shadow` | `blur` and `offsetY` in pixels (same scale), `opacity` 0 to 1. |
 | `tilt` | A fixed 3D tilt: `rotateX` and `rotateY` in degrees (-30 to 30), `perspective` in pixels. |
+
+## Backdrops
+
+![Every backdrop preset](docs/images/backdrop-presets.jpg)
+
+A shader backdrop is drawn procedurally by camerawork itself (no GPU, no browser), the same way in the render and in
+the editor, and the same settings always give the same pixels:
+
+```json
+"backdrop": { "type": "shader", "style": "silk",
+  "colors": ["#1a0b3d", "#ff2bd6", "#7b2bff"], "angle": 62, "scale": 1.0,
+  "distortion": 0.4, "seed": 7, "grain": 0.06, "vignette": 0.2,
+  "motion": { "enabled": false, "speed": 0.3 } }
+```
+
+| Style | Look |
+|---|---|
+| `silk` | soft diagonal bands of light with a sheen, like folded fabric |
+| `waves` | layered flowing waves, stacked along the angle |
+| `aurora` | wide glowing ribbons over a dark base (the first colour) |
+| `mesh` | soft colour blobs blended together (placed by the seed) |
+| `stripes` | crisp diagonal bands with soft edges and depth shading |
+| `ripple` | zig-zag interference ripples |
+| `linear`, `radial`, `conic` | classic gradients |
+
+| Setting | Range | Default | Meaning |
+|---|---|---|---|
+| `style` | above | required | The pattern. |
+| `colors` | 2–5 `#rrggbb` | the style's palette | Mixed in OKLab, so blends stay vivid. |
+| `angle` | 0–360 | 45 | Direction, in degrees as in CSS (0 up, 90 right). |
+| `scale` | 0.2–5 | 1 | Pattern size: 2 makes every feature twice as large. |
+| `distortion` | 0–1 | 0.3 | How much noise bends the pattern. |
+| `seed` | integer | 1 | Picks the noise and blob positions. |
+| `grain` | 0–0.3 | 0.04 | Film grain, added at full resolution. |
+| `vignette` | 0–1 | 0 | Darkens the edges. |
+| `motion` | `{ enabled, speed 0.05–2 }` | off, 0.3 | Animates the backdrop: one seamless loop over the video's length. |
+
+Backdrop presets (`camerawork looks` describes each): `ultraviolet`, `glacier`, `raspberry`, `frost`, `chrome` (silk),
+`aurora`, `dusk`, `midnight`, `ember`, `graphite` (stripes), `petal` (mesh), `ripple-sea` (ripple), `solar` (waves),
+`horizon` (linear), `halo` (radial), `prism` (conic), and the plain `hero` gradient, `solid` and `none`.
+
+How it renders: the pattern is computed at up to 1280 px on the long side, upscaled to the scene with high-quality
+resampling, then grained at full size. A still backdrop costs about a second for a 4K master. With `motion`, every
+frame of one loop (the master's duration at the output fps) is computed on worker threads, about 20–45 ms per frame
+on an 8-core machine, into a temporary video that the scene graph loops, upscales and grains; a 5-second 1080p
+master renders in about 11 s instead of 6 s. `speed` sets how far the pattern travels in one loop, so the first and
+last frames always meet.
+
+## Look editor
+
+```bash
+camerawork look edit --master master.mov -o my-look.json
+```
+
+A local page (served on `127.0.0.1` only) for designing a whole look on a real frame of your recording: pick a preset
+from the grid of live thumbnails, then adjust the style, colours, angle, scale, distortion, seed, grain, vignette and
+motion, and the window's padding, corner radius, shadow and tilt. The time slider picks the frame; Play animates a
+moving backdrop. Save writes `my-look.json` (validated like any look file) and ends the command; Copy JSON copies the
+look; Reset goes back to the starting look. Without `--master` the window is a neutral placeholder. Use the file with
+`camerawork plan master.mov -o plan.json --look my-look.json`.
+
+For agents: run `look edit` with `--no-open`, give the user the printed URL and wait for the command to exit (0 means
+saved, 1 means closed without saving). Non-interactive shells ignore SIGINT for background jobs, so stop an abandoned
+editor with SIGTERM (`kill <pid>`), or let it time out: it ends 120 s after the page stops pinging, or 15 minutes
+after start if no page ever connects.
 
 ## Library API
 
@@ -344,10 +413,14 @@ const files = await render(readPlan("plan.json"), { out: "out/feature" }); // ["
 - `render(plan, { out, onProgress? })` writes the files and returns their paths.
 - `preview(plan, { out, every?, columns?, tileWidth?, debugWidth? })` returns `{ sheet, debug }`.
 - `detect(masterPath, { masks?, threshold?, analysisFps?, scale? })` returns a `ChangesFile`.
-- Helpers: `readPlan`, `readCueFile`, `readChangesFile`, `writeJsonAtomic`, `resolveLook`, `LOOKS`,
+- `lookPreview(look, { out, master?, at?, width? })` writes one composed still of a look and returns its path.
+- `startEditor({ out, look, master?, port? })` starts the look editor and returns `{ url, port, done, close }`;
+  `done` resolves with the saved path, or `null` if the session ended without a save. `openUrl(url)` opens a browser.
+- Presets: `LOOKS`, `LOOK_DESCRIPTIONS`, `BACKDROPS` (name → `{ description, backdrop }`), `STYLES`, `STYLE_NAMES`.
+- Helpers: `readPlan`, `readCueFile`, `readChangesFile`, `writeJsonAtomic`, `resolveLook`,
   `checkSharpness`, and `CameraworkError` (thrown for problems with your input, with a message that says what to
   change).
-- Types: `Plan`, `Look`, `Backdrop`, `OutputSettings`, `PlannerParams`, `Cue`, `FocusCue`, `WideCue`, `IgnoreCue`,
+- Types: `Plan`, `Look`, `Backdrop`, `ShaderBackdrop`, `OutputSettings`, `PlannerParams`, `Cue`, `FocusCue`, `WideCue`, `IgnoreCue`,
   `CueFile`, `Change`, `ChangesFile`, `Shot`, `Keyframe`, `View`, `Rect`, `Probe`, `PlanOptions`, `PreviewOptions`,
   `RenderOptions`, `DetectOptions`, and the matching zod schemas (`PlanSchema`, `LookSchema`, …).
 
@@ -386,8 +459,9 @@ bun install
 bun test                # needs ffmpeg and ffprobe 6+
 bun run lint            # biome
 bun run typecheck       # tsc --noEmit
-bun run build           # dist/
+bun run build           # dist/ (tsc) and dist/editor/ (the editor page, bundled with esbuild)
 node dist/cli.js --help
+bun scripts/presets-sheet.ts   # regenerates docs/images/backdrop-presets.jpg after changing a preset
 ```
 
 Design: [docs/superpowers/specs/2026-10-17-camerawork-design.md](docs/superpowers/specs/2026-10-17-camerawork-design.md)
@@ -396,4 +470,5 @@ Skia for the camera, ffmpeg for the encode).
 
 ## License
 
-[MIT](LICENSE)
+[MIT](LICENSE). The backdrop styles were inspired by [gradflow](https://github.com/meerbahadin/gradflow) (MIT); see
+[NOTICE](NOTICE).
