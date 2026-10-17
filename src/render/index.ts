@@ -53,6 +53,31 @@ export function checkMaster(plan: Plan): void {
     );
 }
 
+/**
+ * While a render or preview runs, Ctrl-C / SIGTERM removes its work folder and stops its ffmpeg sinks, then re-raises
+ * the signal so the exit status stays 130 / 143. The handlers are `once` ones added next to the caller's own, which
+ * keep working; call the returned function (in `finally`) to remove them.
+ */
+export function cleanupOnSignal(work: string, sinks: () => FrameSink[]): () => void {
+  const handlers = new Map<NodeJS.Signals, () => void>();
+  const remove = () => {
+    for (const [sig, fn] of handlers) process.off(sig, fn);
+    handlers.clear();
+  };
+  for (const sig of ["SIGINT", "SIGTERM"] as const) {
+    const fn = () => {
+      for (const sink of sinks()) sink.killNow();
+      rmSync(work, { recursive: true, force: true });
+      remove();
+      // Nobody else listening means the default action (exit by the signal) is back once ours are removed.
+      process.kill(process.pid, sig);
+    };
+    handlers.set(sig, fn);
+    process.once(sig, fn);
+  }
+  return remove;
+}
+
 const even = (n: number) => Math.round(n / 2) * 2;
 
 /** Renders a plan: scene (ffmpeg) → camera (Skia) → encoders, all streaming; files appear only on success. */
@@ -69,6 +94,7 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
   const tmp = (ext: string) => `${opts.out}.tmp-${process.pid}.${ext}`;
   const written: [string, string][] = [];
   const sinks: FrameSink[] = [];
+  const unguard = cleanupOnSignal(work, () => sinks);
   try {
     const assets = await makeLookAssets(layout, plan.look, work, {
       fps: plan.output.fps,
@@ -119,6 +145,7 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
     for (const [path] of written) rmSync(path, { recursive: true, force: true });
     throw error;
   } finally {
+    unguard();
     rmSync(work, { recursive: true, force: true });
   }
 }

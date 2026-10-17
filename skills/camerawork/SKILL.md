@@ -82,9 +82,10 @@ rectangles (window points) to master pixels by multiplying by the display's back
 Before planning, ask the user which they want: the default `hero` look, a preset, or a look customised in the editor.
 
 - **Default:** `--look hero` (gray gradient, 9 % padding, rounded corners, shadow). `--look flat` is the window alone.
-- **A preset:** `camerawork looks` lists the look and backdrop presets. `hero` is in both lists: the look wins the name, so `--look hero` is the full hero look. Any backdrop preset works as a look:
-  `--look ultraviolet` is the hero window on the `ultraviolet` backdrop. Pick 2–3 that suit the product, render a
-  still of each on the user's recording, open the PNGs and look at them, show them to the user and let them choose:
+- **A preset:** `camerawork looks` lists the look and backdrop presets. `hero` is in both lists: the look wins the
+  name, so `--look hero` is the full hero look. Any backdrop preset works as a look: `--look ultraviolet` is the hero
+  window on the `ultraviolet` backdrop. Pick 2–3 that suit the product, render a still of each on the user's
+  recording, open the PNGs and look at them, show them to the user and let them choose:
 
   ```bash
   camerawork look preview ultraviolet --master master.mov -o /tmp/look-ultraviolet.png --width 960
@@ -105,7 +106,8 @@ Before planning, ask the user which they want: the default `hero` look, a preset
   <dir>/look.json`.
 
 A look file is a full object with `backdrop`, `padding`, `radius`, `shadow` and `tilt`. `backdrop` can be a gradient,
-a solid colour, `{ "type": "image", "path": "bg.jpg" }` (relative to the plan file), or a procedural
+a solid colour, `{ "type": "image", "path": "bg.jpg" }` (relative to the look file, or to the plan file inside
+plan.json), or a procedural
 `{ "type": "shader", "style": "silk", "colors": [...], "motion": { "enabled": true, "speed": 0.3 } }` (styles: silk,
 waves, aurora, mesh, stripes, ripple, linear, radial, conic). Motion makes the backdrop loop seamlessly over the
 video; it costs render time (roughly 20–45 ms per frame on 8 cores).

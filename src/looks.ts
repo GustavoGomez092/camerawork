@@ -1,5 +1,5 @@
 import { shaderColors } from "./backdrops/index.js";
-import { BACKDROPS, type BackdropPreset, HERO_BACKDROP } from "./backdrops/presets.js";
+import { BACKDROPS, type BackdropPreset, FLAT_WINDOW, HERO_BACKDROP, HERO_WINDOW } from "./backdrops/presets.js";
 import { CameraworkError, parseWith } from "./errors.js";
 import { type Look, LookSchema } from "./schema.js";
 
@@ -9,18 +9,12 @@ export const LOOKS = {
   hero: {
     preset: "hero",
     backdrop: HERO_BACKDROP,
-    padding: 0.09,
-    radius: 18,
-    shadow: { blur: 60, offsetY: 24, opacity: 0.55 },
-    tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+    ...structuredClone(HERO_WINDOW),
   },
   flat: {
     preset: "flat",
     backdrop: { type: "none" },
-    padding: 0,
-    radius: 0,
-    shadow: { blur: 0, offsetY: 0, opacity: 0 },
-    tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+    ...structuredClone(FLAT_WINDOW),
   },
 } satisfies Record<string, Look>;
 

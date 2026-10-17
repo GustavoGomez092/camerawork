@@ -19,6 +19,22 @@ export const HERO_BACKDROP: Backdrop = {
   ],
 };
 
+/** The window settings of the `hero` look and of every backdrop preset used as a look (ruling R2). */
+export const HERO_WINDOW = {
+  padding: 0.09,
+  radius: 18,
+  shadow: { blur: 60, offsetY: 24, opacity: 0.55 },
+  tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+};
+
+/** The window settings of the `flat` look: the window alone. */
+export const FLAT_WINDOW = {
+  padding: 0,
+  radius: 0,
+  shadow: { blur: 0, offsetY: 0, opacity: 0 },
+  tilt: { rotateX: 0, rotateY: 0, perspective: 2400 },
+};
+
 const shader = (
   style: StyleName,
   colors: string[],

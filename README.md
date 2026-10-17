@@ -242,7 +242,7 @@ frame.
 
 `camerawork look edit -o my-look.json` starts the [look editor](#look-editor) on `127.0.0.1`, prints its URL and
 opens it in the browser. It exits 0 once you press Save (the look is written to `-o`), or 1 with nothing written if
-the page is closed without saving.
+the page is closed without saving or the session times out.
 
 | Flag | Default | Meaning |
 |---|---|---|
@@ -301,8 +301,9 @@ A look is the presentation around the window. Pick one with `--look`:
 - any [backdrop preset](#backdrops), such as `--look ultraviolet`: the `hero` window on that backdrop.
 - a JSON file, `--look my-look.json` (write one by hand or with `camerawork look edit`).
 
-`camerawork looks` lists them all. `hero` appears under both Looks and Backdrops: the look preset wins the
-name, so `--look hero` is the full hero look (gray gradient, padding, shadow). A custom look is a full object (all fields required except `preset`):
+`camerawork looks` lists them all. `hero` appears under both Looks and Backdrops: the look preset wins the name,
+so `--look hero` is the full hero look (gray gradient, padding, shadow). A custom look is a full object (all fields
+required except `preset`):
 
 ```json
 {
@@ -317,7 +318,7 @@ name, so `--look hero` is the full hero look (gray gradient, padding, shadow). A
 
 | Field | Meaning |
 |---|---|
-| `backdrop` | One of `{ "type": "gradient", "angle": 180, "stops": [{ "at": 0, "color": "#8f8f8f" }, …] }` (at least two stops, `at` from 0 to 1), `{ "type": "solid", "color": "#101010" }`, `{ "type": "image", "path": "bg.jpg" }`, `{ "type": "none" }`, or a [shader backdrop](#backdrops). Colors are `#rrggbb`. An image path is stored absolute in the plan; a relative one counts from the plan file's folder. |
+| `backdrop` | One of `{ "type": "gradient", "angle": 180, "stops": [{ "at": 0, "color": "#8f8f8f" }, …] }` (at least two stops, `at` from 0 to 1), `{ "type": "solid", "color": "#101010" }`, `{ "type": "image", "path": "bg.jpg" }`, `{ "type": "none" }`, or a [shader backdrop](#backdrops). Colors are `#rrggbb`. An image path is stored absolute in the plan; a relative one counts from the look file's folder (or the plan file's, inside plan.json). |
 | `padding` | Space around the window as a fraction of the width, 0 to 0.45. |
 | `radius` | Corner radius in pixels at a 1920-px-wide window. |
 | `shadow` | `blur` and `offsetY` in pixels (same scale), `opacity` 0 to 1. |
@@ -420,9 +421,10 @@ const files = await render(readPlan("plan.json"), { out: "out/feature" }); // ["
 - Helpers: `readPlan`, `readCueFile`, `readChangesFile`, `writeJsonAtomic`, `resolveLook`,
   `checkSharpness`, and `CameraworkError` (thrown for problems with your input, with a message that says what to
   change).
-- Types: `Plan`, `Look`, `Backdrop`, `ShaderBackdrop`, `OutputSettings`, `PlannerParams`, `Cue`, `FocusCue`, `WideCue`, `IgnoreCue`,
-  `CueFile`, `Change`, `ChangesFile`, `Shot`, `Keyframe`, `View`, `Rect`, `Probe`, `PlanOptions`, `PreviewOptions`,
-  `RenderOptions`, `DetectOptions`, and the matching zod schemas (`PlanSchema`, `LookSchema`, …).
+- Types: `Plan`, `Look`, `Backdrop`, `ShaderBackdrop`, `OutputSettings`, `PlannerParams`, `Cue`, `FocusCue`,
+  `WideCue`, `IgnoreCue`, `CueFile`, `Change`, `ChangesFile`, `Shot`, `Keyframe`, `View`, `Rect`, `Probe`,
+  `PlanOptions`, `PreviewOptions`, `RenderOptions`, `DetectOptions`, and the matching zod schemas (`PlanSchema`,
+  `LookSchema`, …).
 
 ## Troubleshooting
 

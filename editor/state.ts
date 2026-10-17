@@ -1,4 +1,5 @@
 import { STYLES, shaderColors } from "../src/backdrops/index.js";
+import { BACKDROPS, FLAT_WINDOW, HERO_BACKDROP, HERO_WINDOW } from "../src/backdrops/presets.js";
 import type { StyleName } from "../src/backdrops/types.js";
 import { lookScale, type SceneLayout } from "../src/geometry.js";
 import type { Backdrop, Look, ShaderBackdrop } from "../src/schema.js";
@@ -80,8 +81,39 @@ export const addColor = (colors: string[]): string[] =>
 export const removeColor = (colors: string[], i: number): string[] =>
   colors.length <= 2 ? colors : colors.filter((_, j) => j !== i);
 
+/** A backdrop with a shader's omitted palette filled in, so equal looks compare equal. */
+const full = (b: Backdrop): Backdrop => (b.type === "shader" ? { ...b, colors: [...shaderColors(b)] } : b);
+
+/** Deep equality for plain JSON values, ignoring key order. */
+function same(a: unknown, b: unknown): boolean {
+  if (typeof a !== "object" || typeof b !== "object" || a === null || b === null) return a === b;
+  const x = a as Record<string, unknown>;
+  const y = b as Record<string, unknown>;
+  const keys = Object.keys(x);
+  return keys.length === Object.keys(y).length && keys.every((k) => k in y && same(x[k], y[k]));
+}
+
+/** What the named preset resolves to (backdrop and window), or undefined for an unknown name. */
+function presetParts(name: string): { backdrop: Backdrop; window: object } | undefined {
+  if (name === "hero") return { backdrop: HERO_BACKDROP, window: HERO_WINDOW };
+  if (name === "flat") return { backdrop: { type: "none" }, window: FLAT_WINDOW };
+  const preset = Object.hasOwn(BACKDROPS, name) ? BACKDROPS[name] : undefined;
+  return preset && { backdrop: preset.backdrop, window: HERO_WINDOW };
+}
+
+/** The look with its `preset` label dropped once the backdrop or window no longer equals that preset's. */
+export function labelled(look: Look): Look {
+  if (look.preset === undefined) return look;
+  const { preset, ...rest } = look;
+  const want = presetParts(preset);
+  if (!want) return rest;
+  const { backdrop, padding, radius, shadow, tilt } = look;
+  const same_ = same(full(backdrop), full(want.backdrop)) && same({ padding, radius, shadow, tilt }, want.window);
+  return same_ ? look : rest;
+}
+
 /** The look as the page shows it in Copy JSON and sends it to Save. */
-export const lookJson = (look: Look): string => `${JSON.stringify(look, null, 2)}\n`;
+export const lookJson = (look: Look): string => `${JSON.stringify(labelled(look), null, 2)}\n`;
 
 /** Where and how the window sits in a preview drawn at `s` preview pixels per scene pixel. */
 export interface WindowBox {

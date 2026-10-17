@@ -189,6 +189,11 @@ export class FrameSink {
     return this.done;
   }
 
+  /** Kills the process now, without waiting (for signal handlers). */
+  killNow(): void {
+    if (!this.exited) this.proc.kill("SIGKILL");
+  }
+
   /** Kills the process and resolves once it has exited. Never rejects. */
   async kill(): Promise<void> {
     if (!this.exited) this.proc.kill("SIGKILL");

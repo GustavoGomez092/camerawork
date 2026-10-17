@@ -1,4 +1,4 @@
-// Renders the README's contact sheet of every backdrop preset, each with the hero window on it.
+// Renders the README's contact sheet of every backdrop preset, each on a plain window mock.
 // Usage: bun scripts/presets-sheet.ts [out.jpg]   (default docs/images/backdrop-presets.jpg)
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";

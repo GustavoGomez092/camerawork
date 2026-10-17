@@ -6,6 +6,7 @@ import {
   addColor,
   currentColors,
   getPath,
+  lookJson,
   RANGES,
   removeColor,
   SHADER_DEFAULTS,
@@ -24,6 +25,19 @@ import { tmpDir } from "./helpers.js";
 const root = join(import.meta.dir, "..");
 
 describe("editor state", () => {
+  test("a saved look keeps its preset label only while it still equals that preset", () => {
+    const untouched = resolveLook("ultraviolet");
+    expect(JSON.parse(lookJson(untouched)).preset).toBe("ultraviolet");
+    expect(JSON.parse(lookJson(resolveLook("hero"))).preset).toBe("hero");
+    expect(JSON.parse(lookJson(resolveLook("flat"))).preset).toBe("flat");
+    const backdropEdited = setPath(untouched, "backdrop.angle", 12);
+    expect("preset" in JSON.parse(lookJson(backdropEdited))).toBe(false);
+    const windowEdited = setPath(untouched, "padding", 0.2);
+    expect("preset" in JSON.parse(lookJson(windowEdited))).toBe(false);
+    expect(LookSchema.safeParse(JSON.parse(lookJson(backdropEdited))).success).toBe(true);
+    expect("preset" in JSON.parse(lookJson({ ...untouched, preset: "no-such-preset" }))).toBe(false);
+  });
+
   test("picking a style turns any backdrop into a shader with the spec's defaults", () => {
     expect(shaderFor("waves", LOOKS.hero.backdrop)).toEqual({
       type: "shader",

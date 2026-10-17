@@ -147,14 +147,21 @@ save.addEventListener("click", async () => {
     }
     say(reply.error, true);
   } catch {
-    say("The editor is no longer running: nothing was saved", true);
+    say("The editor is no longer running: nothing was saved. Use Copy JSON to keep your look.", true);
   }
   save.disabled = false;
 });
 
-const beat = () => fetch("/heartbeat", { method: "POST" }).catch(() => say("The editor is no longer running", true));
+const beat = () =>
+  fetch("/heartbeat", { method: "POST" }).catch(() =>
+    say("The editor is no longer running. Use Copy JSON to keep your look.", true),
+  );
 const heartbeat = setInterval(beat, HEARTBEAT_MS);
 beat();
+// Hidden tabs throttle timers, so ping at once when the tab comes back.
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") beat();
+});
 addEventListener("pagehide", () => navigator.sendBeacon("/bye"));
 addEventListener("resize", () => draw(false));
 byId<HTMLElement>("out").textContent = info.out;
