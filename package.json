@@ -8,6 +8,10 @@
     "type": "git",
     "url": "git+https://github.com/GustavoGomez092/camerawork.git"
   },
+  "homepage": "https://github.com/GustavoGomez092/camerawork#readme",
+  "bugs": {
+    "url": "https://github.com/GustavoGomez092/camerawork/issues"
+  },
   "keywords": [
     "screen recording",
     "video",
@@ -38,6 +42,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
+    "prepare": "tsc -p tsconfig.build.json",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "lint": "biome check .",
