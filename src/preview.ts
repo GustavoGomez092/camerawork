@@ -54,7 +54,10 @@ export async function preview(plan: Plan, opts: PreviewOptions): Promise<{ sheet
   const layout = sceneLayout(plan.master, plan.look, plan.output.aspect);
   const work = mkdtempSync(join(tmpdir(), "camerawork-preview-"));
   try {
-    const assets = await makeLookAssets(layout, plan.look, work);
+    const assets = await makeLookAssets(layout, plan.look, work, {
+      fps: plan.output.fps,
+      duration: plan.master.duration,
+    });
     const fps = plan.output.fps;
     const k = debugW / layout.sceneW;
     const dH = even(layout.sceneH * k);
