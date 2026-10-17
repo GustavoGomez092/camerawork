@@ -42,7 +42,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
-    "prepare": "tsc -p tsconfig.build.json",
+    "prepare": "node scripts/prepare.mjs",
     "typecheck": "tsc --noEmit",
     "test": "bun test",
     "lint": "biome check .",
