@@ -1,0 +1,12 @@
+{
+  "name": "camerawork",
+  "owner": { "name": "Gustavo Gomez" },
+  "description": "camerawork: guided zoom-and-pan video tours from screen recordings.",
+  "plugins": [
+    {
+      "name": "camerawork",
+      "source": "./",
+      "description": "Turn screen recordings into guided video tours. Adds a Claude skill that installs and runs the camerawork CLI."
+    }
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "name": "camerawork",
+  "description": "Turn screen recordings into guided video tours: automatic zoom and pan to what changes, on a presentation backdrop. Adds the camerawork skill, which installs the CLI on first use.",
+  "version": "0.1.0",
+  "author": { "name": "Gustavo Gomez" },
+  "homepage": "https://github.com/GustavoGomez092/camerawork#readme",
+  "repository": "https://github.com/GustavoGomez092/camerawork",
+  "license": "MIT",
+  "keywords": ["screen recording", "video", "zoom", "demo", "ffmpeg", "product video"]
+}
