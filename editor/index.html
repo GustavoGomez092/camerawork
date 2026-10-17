@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>camerawork look editor</title>
+    <link rel="stylesheet" href="/editor.css" />
+  </head>
+  <body>
+    <header class="bar">
+      <strong>camerawork</strong>
+      <span class="muted">look editor → <code id="out"></code></span>
+      <span id="status" class="status" role="status"></span>
+      <button id="copy" type="button">Copy JSON</button>
+      <button id="reset" type="button">Reset</button>
+      <button id="save" type="button" class="primary">Save</button>
+    </header>
+    <main class="layout">
+      <section class="left">
+        <div id="stage" class="stage">
+          <div id="scene" class="scene">
+            <canvas id="backdrop"></canvas>
+            <div id="window" class="window"><img id="frame" alt="A frame of the recording" /></div>
+          </div>
+        </div>
+        <div class="timebar">
+          <button id="play" type="button" aria-pressed="false">Play</button>
+          <label>Frame at <input id="time" type="range" min="0" max="10" step="0.1" value="0" /></label>
+          <output id="time-out">0.0 s</output>
+        </div>
+      </section>
+      <aside class="panel">
+        <details open>
+          <summary>Presets</summary>
+          <div id="preset-grid" class="grid"></div>
+        </details>
+        <form id="controls" autocomplete="off"></form>
+      </aside>
+    </main>
+    <script type="module" src="/editor.js"></script>
+  </body>
+</html>
