@@ -129,13 +129,16 @@ h], strength, fullFrame? }] }` with `strength` = changed-pixel fraction of the r
 
 Changes (detected, minus ignored, plus cues) are clustered into **shots** by salience:
 
-- **One focus per moment.** Changes within `shotJoinGap` (0.6 s) of each other form a moment. Its regions are grouped
-  heaviest first; a region joins a group only when the union still frames within `panZoomTolerance` of the group's
-  first region. The group with the most changed pixels is the moment's focus; the rest are dropped (a toolbar or
-  status-bar redraw does not pull the camera away from the main change). Use `--mask` for chrome that outweighs the
-  real action.
-- **Growing shots.** A moment whose focus frames close to the current shot extends it, so a typing burst becomes one
-  shot whose target grows with the text.
+- **One focus per moment.** Changes within `shotJoinGap` (0.6 s) of each other form a moment. Its regions are taken
+  heaviest first; a region joins a group only when it lies entirely inside the view that frames the group's first
+  (dominant) region, otherwise it starts its own group. The group with the most changed pixels wins and the rest are
+  dropped. The shot is framed on the winning group's dominant region alone; the other members add weight and widen
+  its time span but never move the framing (a toolbar or status-bar redraw does not pull the camera away from the
+  main change). Use `--mask` for chrome that outweighs the real action.
+- **Growing shots.** A moment that starts within `shotJoinGap` of the current shot's end, whose focus lies inside the
+  current shot's view, and whose union with the shot still frames within `panZoomTolerance` of the shot's zoom
+  extends it: a typing burst becomes one shot whose target grows with the text, while a change elsewhere stays its
+  own shot.
 - Cues and full-frame (wide) changes are always their own shots and are never merged or dropped.
 
 Each shot has `start`, `end`, a target rectangle and a weight.
@@ -146,11 +149,18 @@ everything fits at zoom 1 — and on a real recording turned one UI update into 
 ### 5.3 Framing and moves
 
 - **Framing:** the camera view for a shot is the smallest rectangle with the output's aspect ratio containing the
-  target plus a 12 % margin. Zoom = scene width / view width, clamped to `[1, maxZoom]` (default `maxZoom` 2.2). If
-  the target does not fit at zoom 1 the shot is wide.
+  target plus a 12 % margin, centred on the target and then shifted as little as needed to stay inside the app window
+  (for a tilted look, the warped window's bounding box), so a zoomed view never shows the backdrop; where the view is
+  larger than the window it is centred on the window. The wide view (zoom 1) is the whole scene. Every view stays
+  inside the scene. Zoom = scene width / view width, clamped to `[1, maxZoom]` (default `maxZoom` 2.2). If the target
+  does not fit at zoom 1 the shot is wide.
 - **Pan vs zoom out:** when the next shot's zoom is within ±30 % of the current one, the camera pans directly (the
   hero's chat-box → diff move). Otherwise, if the gap between shots is ≥ 1.0 s, it eases out toward wide and back
   in; if the gap is shorter it zooms directly to the new framing.
+- **Stay if visible:** while zoomed in, an auto shot whose target already lies inside the current view (less a 2 %
+  inset, none on sides already at the window edge) and whose own zoom is within `panZoomTolerance` of the current
+  zoom does not move the camera; the hold is extended instead. Cues still re-frame; a wide camera still zooms in;
+  after an idle drift to wide, the camera returns to the shot's own framing.
 - **Missed moments are skipped:** an auto shot the camera cannot reach before it ends (plus `minHold`), or whose
   visit would make the camera miss a later, heavier shot, is skipped; the camera prefers later and larger changes.
   Cue shots are never skipped.
