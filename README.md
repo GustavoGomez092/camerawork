@@ -144,11 +144,14 @@ over the moving master.
 
 ```
 camerawork detect <master> -o <changes.json> [--mask x,y,w,h]...
-camerawork plan <master> -o <plan.json> [--cues f] [--changes f] [--look hero|flat|look.json] [--loop]
+camerawork plan <master> -o <plan.json> [--cues f] [--changes f] [--look <preset|look.json>] [--loop]
                 [--width N] [--fps N] [--formats mp4,webm] [--poster jpg|webp|none] [--max-bytes N]
                 [--quality medium|high] [--max-zoom N] [--min-hold N] [--mask x,y,w,h]...
 camerawork preview <plan.json> [-o <prefix>]
 camerawork render <plan.json> -o <prefix>
+camerawork looks
+camerawork look preview <preset|look.json> -o <look.png> [--master <video>] [--at seconds] [--width N]
+camerawork look edit -o <look.json> [--master <video>] [--look <preset|look.json>] [--port N] [--no-open]
 camerawork --version
 ```
 
@@ -173,7 +176,7 @@ Detects (unless `--changes` is given), merges cues, and plans the camera. Writes
 | `-o <plan.json>` | required | Output file. |
 | `--cues <file>` | none | A [cues.json](#cuesjson). |
 | `--changes <file>` | detect | Use a file made by `detect` (it must come from a master of the same size). |
-| `--look <name or file>` | `hero` | `hero`, `flat`, or a path ending in `.json` with a [look](#looks). |
+| `--look <name or file>` | `hero` | A look preset (`hero`, `flat`), a [backdrop preset](#backdrops) (the hero window on that backdrop), or a path ending in `.json` with a [look](#looks). |
 | `--loop` | off | The video loops: it starts and ends wide, with the final move back reserved. |
 | `--width N` | `1920` | Output width in pixels (even). Height follows the master's aspect ratio. |
 | `--fps N` | `30` | Output frame rate. |
@@ -215,6 +218,37 @@ paths. The prefix defaults to the plan's path without `.json` (`plan.json` gives
 `camerawork render plan.json -o out/feature` writes `out/feature.mp4`, `out/feature.webm` and `out/feature.jpg`
 (as the plan's formats and poster say) and prints their paths. It refuses a plan that would upscale. Progress shows
 on stderr when it is a terminal. It takes no output options: change them with `plan`, or edit `plan.json`.
+
+### `looks`
+
+`camerawork looks` lists the look presets and the backdrop presets, one line each.
+
+### `look preview`
+
+`camerawork look preview <preset|look.json> -o look.png` renders one still of a look (the backdrop, the shadow and the
+window, through the same scene graph as `render`) and prints its path. An animated backdrop is shown at its first
+frame.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-o <look.png>` | required | Output PNG. |
+| `--master <video>` | a placeholder | Show a frame of this recording in the window (else a neutral 1920×1080 window mock). |
+| `--at seconds` | the middle | Which frame of `--master`. |
+| `--width N` | the scene's width | Width of the PNG. |
+
+### `look edit`
+
+`camerawork look edit -o my-look.json` starts the [look editor](#look-editor) on `127.0.0.1`, prints its URL and
+opens it in the browser. It exits 0 once you press Save (the look is written to `-o`), or 1 with nothing written if
+the page is closed without saving.
+
+| Flag | Default | Meaning |
+|---|---|---|
+| `-o <look.json>` | required | Where Save writes the look. |
+| `--master <video>` | a placeholder | Preview on frames of this recording. |
+| `--look <preset or file>` | `hero` | The starting look. |
+| `--port N` | a free port | Listen on this port. |
+| `--no-open` | off | Do not open a browser; just print the URL (for headless machines and agents). |
 
 ### `--version`, `--help`
 

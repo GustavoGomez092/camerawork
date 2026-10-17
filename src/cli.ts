@@ -3,8 +3,12 @@ import { accessSync, constants, readFileSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseArgs } from "node:util";
+import { BACKDROPS } from "./backdrops/presets.js";
 import { detect } from "./detect/index.js";
+import { openUrl, startEditor } from "./editor/server.js";
 import { CameraworkError } from "./errors.js";
+import { lookPreview } from "./look-preview.js";
+import { LOOK_DESCRIPTIONS, LOOKS, resolveLook } from "./looks.js";
 import { plan, readChangesFile, readCueFile, readJson, readPlan, writeJsonAtomic } from "./plan/index.js";
 import { preview } from "./preview.js";
 import { render } from "./render/index.js";
@@ -12,11 +16,14 @@ import type { Look, Rect } from "./schema.js";
 
 const USAGE = `Usage:
   camerawork detect <master> -o <changes.json> [--mask x,y,w,h]...
-  camerawork plan <master> -o <plan.json> [--cues f] [--changes f] [--look hero|flat|look.json] [--loop]
+  camerawork plan <master> -o <plan.json> [--cues f] [--changes f] [--look <preset|look.json>] [--loop]
                   [--width N] [--fps N] [--formats mp4,webm] [--poster jpg|webp|none] [--max-bytes N]
                   [--quality medium|high] [--max-zoom N] [--min-hold N] [--mask x,y,w,h]...
   camerawork preview <plan.json> [-o <prefix>]
   camerawork render <plan.json> -o <prefix>
+  camerawork looks
+  camerawork look preview <preset|look.json> -o <look.png> [--master <video>] [--at seconds] [--width N]
+  camerawork look edit -o <look.json> [--master <video>] [--look <preset|look.json>] [--port N] [--no-open]
   camerawork --version`;
 
 class UsageError extends Error {}
@@ -47,6 +54,9 @@ const ALLOWED: Record<string, string[]> = {
   plan: PLAN_FLAGS,
   preview: ["out"],
   render: ["out"],
+  looks: [],
+  "look preview": ["out", "master", "at", "width"],
+  "look edit": ["out", "master", "look", "port", "no-open"],
 };
 
 /** Exit 2 for any flag the command does not take. */
@@ -79,6 +89,26 @@ function checkOutputDir(out: string): void {
     );
 }
 
+/** A look argument: a path ending in .json is read as a look file; anything else is a preset name. */
+const lookArg = (v: string | undefined): string | Look | undefined =>
+  v?.endsWith(".json") ? (readJson(v) as Look) : v;
+
+/** `camerawork looks`: every look preset and backdrop preset, one line each. */
+function listLooks(): string {
+  const pad = Math.max(...[...Object.keys(LOOKS), ...Object.keys(BACKDROPS)].map((n) => n.length)) + 2;
+  const lines = ["Looks (the window and its backdrop):"];
+  for (const [name, text] of Object.entries(LOOK_DESCRIPTIONS)) lines.push(`  ${name.padEnd(pad)}${text}`);
+  lines.push("", "Backdrops (--look <name> puts the hero window on it):");
+  for (const [name, preset] of Object.entries(BACKDROPS)) lines.push(`  ${name.padEnd(pad)}${preset.description}`);
+  return lines.join("\n");
+}
+
+/** The editor's idle timeout: CAMERAWORK_EDITOR_IDLE_MS (a test knob), else the server's defaults. */
+function idleKnob(): { idleMs?: number; firstContactMs?: number } {
+  const ms = Number(process.env.CAMERAWORK_EDITOR_IDLE_MS);
+  return Number.isFinite(ms) && ms > 0 ? { idleMs: ms, firstContactMs: ms } : {};
+}
+
 const defined = (o: Record<string, unknown>) =>
   Object.fromEntries(Object.entries(o).filter(([, v]) => v !== undefined));
 
@@ -101,6 +131,10 @@ async function main(argv: string[]): Promise<void> {
       quality: { type: "string" },
       "max-zoom": { type: "string" },
       "min-hold": { type: "string" },
+      master: { type: "string" },
+      at: { type: "string" },
+      port: { type: "string" },
+      "no-open": { type: "boolean" },
       version: { type: "boolean" },
       help: { type: "boolean", short: "h" },
     },
@@ -109,7 +143,7 @@ async function main(argv: string[]): Promise<void> {
     console.log(version());
     return;
   }
-  const [command, input] = positionals;
+  const [command, input, lookInput] = positionals;
   if (values.help || !command) {
     console.log(USAGE);
     return;
@@ -118,7 +152,7 @@ async function main(argv: string[]): Promise<void> {
     if (!v) throw new UsageError(`${command} needs ${what}`);
     return v;
   };
-  checkFlags(command, Object.keys(values));
+  checkFlags(command === "look" ? `look ${input ?? ""}` : command, Object.keys(values));
   if (command === "detect" || command === "plan" || command === "render")
     checkOutputDir(
       need(
@@ -127,6 +161,8 @@ async function main(argv: string[]): Promise<void> {
       ),
     );
   if (command === "preview" && values.out) checkOutputDir(values.out);
+  if (command === "look" && (input === "preview" || input === "edit"))
+    checkOutputDir(need(values.out, input === "preview" ? "-o <look.png>" : "-o <look.json>"));
   const masks = (values.mask ?? []).map(rect);
   switch (command) {
     case "detect": {
@@ -136,7 +172,7 @@ async function main(argv: string[]): Promise<void> {
       return;
     }
     case "plan": {
-      const look = values.look?.endsWith(".json") ? (readJson(values.look) as Look) : values.look;
+      const look = lookArg(values.look);
       const poster = values.poster === "none" ? null : values.poster;
       const p = await plan(need(input, "a master video"), {
         cues: values.cues ? readCueFile(values.cues) : undefined,
@@ -181,6 +217,42 @@ async function main(argv: string[]): Promise<void> {
       if (process.stderr.isTTY) process.stderr.write("\n");
       console.log(files.join("\n"));
       return;
+    }
+    case "looks":
+      console.log(listLooks());
+      return;
+    case "look": {
+      if (input === "preview") {
+        const look = resolveLook(lookArg(need(lookInput, "a look preset or look.json")) as string | Look);
+        const png = await lookPreview(look, {
+          out: need(values.out, "-o <look.png>"),
+          master: values.master,
+          at: num("at", values.at),
+          width: num("width", values.width),
+        });
+        console.log(png);
+        return;
+      }
+      if (input === "edit") {
+        const port = values.port === undefined ? undefined : /^\d+$/.test(values.port) ? Number(values.port) : -1;
+        if (port !== undefined && !(port >= 0 && port <= 65535))
+          throw new UsageError(`--port must be a whole number from 0 to 65535, got "${values.port}"`);
+        const session = await startEditor({
+          out: need(values.out, "-o <look.json>"),
+          look: resolveLook(lookArg(values.look) ?? "hero"),
+          master: values.master,
+          port,
+          ...idleKnob(),
+        });
+        console.log(`camerawork look editor: ${session.url}  (Save in the page to write ${values.out})`);
+        if (!values["no-open"] && !(await openUrl(session.url)))
+          console.error(`camerawork: could not open a browser; open ${session.url} yourself`);
+        const saved = await session.done;
+        if (!saved) throw new CameraworkError("the editor was closed without saving; nothing was written");
+        console.log(`saved ${saved}`);
+        return;
+      }
+      throw new UsageError(`unknown look command "${input ?? ""}" (use: look preview, look edit)`);
     }
     default:
       throw new UsageError(`unknown command "${command}"`);
