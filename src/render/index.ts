@@ -70,7 +70,10 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
   const written: [string, string][] = [];
   const sinks: FrameSink[] = [];
   try {
-    const assets = await makeLookAssets(layout, plan.look, work);
+    const assets = await makeLookAssets(layout, plan.look, work, {
+      fps: plan.output.fps,
+      duration: plan.master.duration,
+    });
     const codec = pickWebmCodec();
     for (const format of plan.output.formats) {
       const path = tmp(format);

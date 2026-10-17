@@ -1,5 +1,6 @@
 import { type SceneLayout, WARP_BORDER } from "../geometry.js";
 import type { LookAssets } from "./assets.js";
+import { motionFilter } from "./backdrop.js";
 
 const n = (v: number) => (Math.round(v * 100) / 100).toString();
 
@@ -23,19 +24,23 @@ export function perspectiveExpr(layout: SceneLayout): string | null {
 
 /**
  * readFrames args producing RGBA scene frames: backdrop, shadow, then the masked (and warped) window.
- * With no mask (only when the window is the whole scene) the master passes straight through.
+ * With no mask (only when the window is the whole scene) the master passes straight through. A still backdrop is a
+ * looped image; an animated one is its intermediate video, looped (`-stream_loop -1`), upscaled and grained.
  */
 export function sceneArgs(masterPath: string, layout: SceneLayout, assets: LookAssets, fps: number): string[] {
   if (!assets.mask) return ["-i", masterPath, "-an", "-vf", `fps=${fps},format=rgba`, "-pix_fmt", "rgba"];
   const B = WARP_BORDER;
   const perspective = perspectiveExpr(layout);
   const still = (path: string) => ["-loop", "1", "-framerate", String(fps), "-i", path];
-  const inputs = ["-i", masterPath, ...still(assets.backdrop), ...still(assets.mask)];
+  const backdrop = assets.motion ? ["-stream_loop", "-1", "-i", assets.backdrop] : still(assets.backdrop);
+  const inputs = ["-i", masterPath, ...backdrop, ...still(assets.mask)];
   const graph = [
     `[0:v]fps=${fps},format=rgb24,pad=iw+${2 * B}:ih+${2 * B}:${B}:${B}:black${perspective ? `,${perspective}` : ""},format=rgba[v]`,
     "[2:v]format=gray[m]",
     "[v][m]alphamerge=shortest=1[w]",
-    "[1:v]format=rgba[bg]",
+    assets.motion
+      ? `[1:v]fps=${fps},${motionFilter(layout.sceneW, layout.sceneH, assets.motion)},format=rgba[bg]`
+      : "[1:v]format=rgba[bg]",
   ];
   let base = "bg";
   if (assets.shadow) {

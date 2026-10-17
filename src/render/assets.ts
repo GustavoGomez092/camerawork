@@ -1,37 +1,39 @@
 import { writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { type Canvas, createCanvas, loadImage } from "@napi-rs/canvas";
+import { gradientLine } from "../backdrops/gradient.js";
 import { CameraworkError } from "../errors.js";
 import { runFfmpeg } from "../ffmpeg.js";
 import { lookScale, type SceneLayout, WARP_BORDER } from "../geometry.js";
-import type { Look } from "../schema.js";
+import type { Backdrop, Look } from "../schema.js";
+import { type BackdropMotion, renderBackdropVideo, shaderCanvas } from "./backdrop.js";
 import { perspectiveExpr } from "./scene.js";
 
 export interface LookAssets {
+  /** A PNG looped as a still, or (when `motion` is set) the animated backdrop's intermediate video, looped. */
   backdrop: string;
+  motion: BackdropMotion | null;
   mask: string | null;
   shadow: string | null;
   shadowX: number;
   shadowY: number;
 }
 
+/** For an animated backdrop: the output fps and the master's duration (one loop). Leave it out for a still. */
+export interface LookTiming {
+  fps: number;
+  duration: number;
+}
+
 const png = (path: string, canvas: Canvas) => writeFileSync(path, canvas.toBuffer("image/png"));
 
-async function drawBackdrop(layout: SceneLayout, look: Look, path: string): Promise<void> {
-  const c = createCanvas(layout.sceneW, layout.sceneH);
+/** Any backdrop as a w×h canvas; a shader backdrop is drawn at loop time 0. */
+export async function backdropCanvas(bd: Backdrop, w: number, h: number): Promise<Canvas> {
+  if (bd.type === "shader") return shaderCanvas(bd, w, h);
+  const c = createCanvas(w, h);
   const ctx = c.getContext("2d");
-  const bd = look.backdrop;
   if (bd.type === "gradient") {
-    const a = ((bd.angle - 90) * Math.PI) / 180; // CSS angles: 180 = top → bottom
-    const half = (Math.abs(layout.sceneW * Math.cos(a)) + Math.abs(layout.sceneH * Math.sin(a))) / 2;
-    const cx = layout.sceneW / 2;
-    const cy = layout.sceneH / 2;
-    const g = ctx.createLinearGradient(
-      cx - Math.cos(a) * half,
-      cy - Math.sin(a) * half,
-      cx + Math.cos(a) * half,
-      cy + Math.sin(a) * half,
-    );
+    const g = ctx.createLinearGradient(...gradientLine(w, h, bd.angle));
     for (const s of bd.stops) g.addColorStop(s.at, s.color);
     ctx.fillStyle = g;
   } else if (bd.type === "solid") {
@@ -39,7 +41,7 @@ async function drawBackdrop(layout: SceneLayout, look: Look, path: string): Prom
   } else {
     ctx.fillStyle = "#000000";
   }
-  ctx.fillRect(0, 0, layout.sceneW, layout.sceneH);
+  ctx.fillRect(0, 0, w, h);
   if (bd.type === "image") {
     let img: Awaited<ReturnType<typeof loadImage>>;
     try {
@@ -47,29 +49,39 @@ async function drawBackdrop(layout: SceneLayout, look: Look, path: string): Prom
     } catch {
       throw new CameraworkError(`cannot read the backdrop image ${bd.path}`);
     }
-    const s = Math.max(layout.sceneW / img.width, layout.sceneH / img.height); // cover
-    ctx.drawImage(
-      img,
-      (layout.sceneW - img.width * s) / 2,
-      (layout.sceneH - img.height * s) / 2,
-      img.width * s,
-      img.height * s,
-    );
+    const s = Math.max(w / img.width, h / img.height); // cover
+    ctx.drawImage(img, (w - img.width * s) / 2, (h - img.height * s) / 2, img.width * s, img.height * s);
   }
-  png(path, c);
+  return c;
 }
 
-/** Draws the backdrop, the (warped) rounded mask and the shadow once, before rendering (ruling R7). */
-export async function makeLookAssets(layout: SceneLayout, look: Look, workDir: string): Promise<LookAssets> {
-  const backdrop = join(workDir, "backdrop.png");
-  await drawBackdrop(layout, look, backdrop);
+/**
+ * Draws the backdrop, the (warped) rounded mask and the shadow once, before rendering (ruling R7). With `timing`, a
+ * shader backdrop with motion becomes an intermediate video of one loop; otherwise the backdrop is a PNG. Nothing is
+ * drawn for the backdrop when the window covers the whole scene.
+ */
+export async function makeLookAssets(
+  layout: SceneLayout,
+  look: Look,
+  workDir: string,
+  timing?: LookTiming,
+): Promise<LookAssets> {
   const k = lookScale(layout.winW);
   const radius = look.radius * k;
   const warp = perspectiveExpr(layout);
   const windowIsScene = layout.sceneW === layout.winW && layout.sceneH === layout.winH;
   // The mask also hides the WARP_BORDER around the window, so it is skipped only when the window is the scene.
-  if (radius === 0 && !warp && look.shadow.opacity === 0 && windowIsScene)
-    return { backdrop, mask: null, shadow: null, shadowX: 0, shadowY: 0 };
+  const hidden = radius === 0 && !warp && look.shadow.opacity === 0 && windowIsScene;
+  const bd = look.backdrop;
+  let backdrop = join(workDir, "backdrop.png");
+  let motion: BackdropMotion | null = null;
+  if (hidden) return { backdrop, motion, mask: null, shadow: null, shadowX: 0, shadowY: 0 };
+  if (bd.type === "shader" && bd.motion.enabled && timing) {
+    backdrop = join(workDir, "backdrop.mp4");
+    motion = await renderBackdropVideo(bd, layout.sceneW, layout.sceneH, timing.fps, timing.duration, backdrop);
+  } else {
+    png(backdrop, await backdropCanvas(bd, layout.sceneW, layout.sceneH));
+  }
 
   const B = WARP_BORDER;
   const flat = createCanvas(layout.winW + 2 * B, layout.winH + 2 * B);
@@ -85,7 +97,7 @@ export async function makeLookAssets(layout: SceneLayout, look: Look, workDir: s
   const mask = join(workDir, "mask.png");
   await runFfmpeg(["-i", flatMask, "-vf", warp ? `format=gray,${warp}` : "format=gray", "-frames:v", "1", mask]);
 
-  if (look.shadow.opacity === 0) return { backdrop, mask, shadow: null, shadowX: 0, shadowY: 0 };
+  if (look.shadow.opacity === 0) return { backdrop, motion, mask, shadow: null, shadowX: 0, shadowY: 0 };
   const blur = look.shadow.blur * k;
   const S = Math.ceil(blur * 2) + 2;
   const shadow = join(workDir, "shadow.png");
@@ -105,6 +117,7 @@ export async function makeLookAssets(layout: SceneLayout, look: Look, workDir: s
   ]);
   return {
     backdrop,
+    motion,
     mask,
     shadow,
     shadowX: layout.winX - B - S,
