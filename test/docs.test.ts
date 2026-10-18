@@ -39,7 +39,7 @@ describe("docs", () => {
       "/plugin marketplace add GustavoGomez092/camerawork",
       "/plugin install camerawork@camerawork",
       "npm pack git+https://github.com/GustavoGomez092/camerawork.git",
-      "npm install -g camerawork",
+      "not published to the npm registry",
       "~/.claude/skills",
       "camerawork detect",
       "camerawork plan",
@@ -57,6 +57,8 @@ describe("docs", () => {
     ])
       expect(readme).toContain(word);
     expect(readme).not.toContain("in design");
+    // camerawork is installed from GitHub only; the README must not promise a registry install.
+    expect(readme).not.toContain("npm install -g camerawork");
   });
 
   test("every backdrop preset and style is in the README, and the contact sheet is committed", async () => {
