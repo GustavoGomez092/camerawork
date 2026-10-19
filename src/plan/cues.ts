@@ -50,6 +50,7 @@ export function toEvents(
       windows.push([cue.from, cue.to]);
       continue;
     }
+    if ("poster" in cue) continue;
     if ("wide" in cue) {
       const end = cue.t + minHold;
       windows.push([cue.t, end]);

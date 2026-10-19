@@ -51,6 +51,20 @@ describe("plan", () => {
     await expect(plan(master, { cues, look: "flat", output: { width: 640 } })).rejects.toThrow(CameraworkError);
   });
 
+  test("a poster cue picks the poster's moment; --poster-at wins; past the end is refused", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 3, boxes: [] });
+    writeFileSync(join(dir, "cues.json"), JSON.stringify({ version: 1, cues: [{ t: 2.5, poster: true }] }));
+    const cues = readCueFile(join(dir, "cues.json"));
+    expect((await plan(master, { look: "flat", output: { width: 640 } })).output.posterAt).toBe(0);
+    expect((await plan(master, { cues, look: "flat", output: { width: 640 } })).output.posterAt).toBe(2.5);
+    expect((await plan(master, { cues, look: "flat", output: { width: 640, posterAt: 1 } })).output.posterAt).toBe(1);
+    await expect(plan(master, { look: "flat", output: { width: 640, posterAt: 9 } })).rejects.toThrow(
+      "--poster-at 9 is after the end of the video (3.00 s)",
+    );
+  });
+
   test("readCueFile names the file on invalid JSON", () => {
     const path = join(tmpDir(), "bad.json");
     writeFileSync(path, "{ nope");

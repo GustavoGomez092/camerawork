@@ -64,3 +64,17 @@ describe("toEvents", () => {
     expect(toEvents([full], undefined, 1.2, 1 / 15)[0]?.wide).toBe(true);
   });
 });
+
+describe("poster cues", () => {
+  test("a poster cue marks a moment and never moves the camera", () => {
+    const file: CueFile = { version: 1, cues: [{ t: 4, poster: true, label: "the result" }] };
+    expect(() => validateCues(file, master)).not.toThrow();
+    expect(toEvents([], file, 1.2, 0.1)).toEqual([]);
+  });
+
+  test("a poster cue past the end is rejected by name", () => {
+    expect(() => validateCues({ version: 1, cues: [{ t: 12, poster: true, label: "the result" }] }, master)).toThrow(
+      'cue 0 ("the result"): t=12 is after the end of the video (10.00 s)',
+    );
+  });
+});

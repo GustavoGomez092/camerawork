@@ -75,6 +75,13 @@ export const readChangesFile = (path: string): ChangesFile =>
 
 const floorEven = (n: number) => Math.floor(n / 2) * 2;
 
+/** The last poster cue's time, if the cues mark one. */
+function posterCueTime(cues: CueFile | undefined): number | undefined {
+  let t: number | undefined;
+  for (const cue of cues?.cues ?? []) if ("poster" in cue) t = cue.t;
+  return t;
+}
+
 /** Detects (unless given changes), merges cues, and plans the camera. */
 export async function plan(masterPath: string, opts: PlanOptions = {}): Promise<Plan> {
   requireFfmpeg();
@@ -91,10 +98,15 @@ export async function plan(masterPath: string, opts: PlanOptions = {}): Promise<
       maxBytes: null,
       aspect: master.width / master.height,
       quality: "medium",
+      posterAt: posterCueTime(opts.cues) ?? 0,
       ...opts.output,
     },
     "output settings",
   );
+  if (output.posterAt > master.duration)
+    throw new CameraworkError(
+      `--poster-at ${output.posterAt} is after the end of the video (${master.duration.toFixed(2)} s)`,
+    );
   const planner = parseWith(
     PlannerParamsSchema,
     { ...DEFAULT_PLANNER, ...opts.cues?.planner, ...opts.planner },

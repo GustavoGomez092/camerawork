@@ -109,12 +109,15 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
     }
     const camera = new Camera(layout.sceneW, layout.sceneH, outW, outH, plan.output.quality);
     const total = Math.round(plan.master.duration * plan.output.fps);
+    const posterFrame = Math.min(Math.max(0, total - 1), Math.round(plan.output.posterAt * plan.output.fps));
+    let posterWritten = false;
     await readFrames(
       sceneArgs(plan.master.path, layout, assets, plan.output.fps),
       layout.sceneW * layout.sceneH * 4,
       async (scene, i) => {
         const frame = camera.frame(scene, cameraAt(plan.keyframes, i / plan.output.fps));
-        if (i === 0 && plan.output.poster) {
+        if (!posterWritten && i >= posterFrame && plan.output.poster) {
+          posterWritten = true;
           const path = tmp(plan.output.poster);
           written.push([path, `${opts.out}.${plan.output.poster}`]);
           try {

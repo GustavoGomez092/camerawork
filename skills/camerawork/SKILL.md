@@ -39,7 +39,7 @@ Node yourself. `--no-ffmpeg` skips ffmpeg, `--upgrade` reinstalls the engine.
    video); deeper zooms need more pixels. Scripted captures are best; hand recordings work too.
 2. **Choose a look** (see Looks below), then **plan.** `camerawork plan master.mov -o plan.json --look hero --loop` (add `--cues cues.json` if the capture
    wrote one; `--loop` for website loops). It prints the shot count and the effective max zoom. All output options
-   (`--width`, `--fps`, `--formats`, `--poster`, `--max-bytes`, `--quality`, `--look`, `--loop`) belong to `plan`:
+   (`--width`, `--fps`, `--formats`, `--poster`, `--poster-at`, `--max-bytes`, `--quality`, `--look`, `--loop`) belong to `plan`:
    `preview` and `render` reject them with exit code 2.
 3. **Preview.** `camerawork preview plan.json` writes `plan-sheet.png` (the contact sheet: one tile per 0.5 s;
    yellow = camera, red = detected change, cyan = cue) and `plan-debug.mp4`. `-o <prefix>` changes the names
@@ -70,8 +70,12 @@ Node yourself. `--no-ffmpeg` skips ffmpeg, `--upgrade` reinstalls the engine.
   "cues": [
     { "t": 3.2, "rect": [1083, 26, 261, 57], "zoom": 2.0, "hold": 1.5, "label": "filter chips" },
     { "t": 8.0, "wide": true },
+    { "t": 6.5, "poster": true, "label": "the result" },
     { "from": 5.0, "to": 6.0, "ignore": true } ] }
 ```
+
+A `poster` cue takes the poster image from its time instead of the first frame -- mark the moment that shows the
+result, since a capture usually starts on an empty screen. `--poster-at S` overrides it.
 
 Times are seconds from the master's first frame; rects are master pixels `[x, y, w, h]`. A cue wins over detection
 inside its window. From a capture script: time cues from the moment recording actually started, and convert element

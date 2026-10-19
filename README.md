@@ -146,7 +146,7 @@ over the moving master.
 ```
 camerawork detect <master> -o <changes.json> [--mask x,y,w,h]...
 camerawork plan <master> -o <plan.json> [--cues f] [--changes f] [--look <preset|look.json>] [--loop]
-                [--width N] [--fps N] [--formats mp4,webm] [--poster jpg|webp|none] [--max-bytes N]
+                [--width N] [--fps N] [--formats mp4,webm] [--poster jpg|webp|none] [--poster-at S] [--max-bytes N]
                 [--quality medium|high] [--max-zoom N] [--min-hold N] [--mask x,y,w,h]...
 camerawork preview <plan.json> [-o <prefix>]
 camerawork render <plan.json> -o <prefix>
@@ -183,6 +183,7 @@ Detects (unless `--changes` is given), merges cues, and plans the camera. Writes
 | `--fps N` | `30` | Output frame rate. |
 | `--formats a,b` | `mp4,webm` | Any of `mp4`, `webm`. |
 | `--poster jpg\|webp\|none` | `jpg` | Poster image written next to the videos. |
+| `--poster-at S` | `0` | Take the poster from S seconds in instead of the first frame (overrides a poster cue). |
 | `--max-bytes N` | none | Fail the render if an output file is larger than N bytes. |
 | `--quality medium\|high` | `medium` | Encoder quality. |
 | `--max-zoom N` | `2.2` | Deepest zoom the planner may use. |
@@ -285,6 +286,8 @@ Cue kinds:
 - **focus**: `{ "t", "rect", "zoom"?, "hold"?, "label"? }` frames `rect` at time `t`. `zoom` (at least 1) forces a
   zoom, `hold` (seconds) forces how long it stays.
 - **wide**: `{ "t", "wide": true, "label"? }` goes to the full window at `t`.
+- **poster**: `{ "t", "poster": true, "label"? }` takes the poster image from time `t` (the moment that shows the
+  result, not the empty first frame). It never moves the camera; the last one wins, and `--poster-at` overrides it.
 - **ignore**: `{ "from", "to", "ignore": true, "label"? }` drops detected changes in that window.
 
 Unknown fields are rejected, so a typo is reported instead of silently ignored. From a capture script, time cues

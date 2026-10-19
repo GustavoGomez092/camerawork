@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { CameraworkError } from "../src/errors.js";
 import { probe, readFrames } from "../src/ffmpeg.js";
 import { plan } from "../src/plan/index.js";
@@ -27,6 +28,19 @@ async function redCentroid(video: string, t: number, w: number, h: number): Prom
     result = n ? [sx / n, sy / n] : [-1, -1];
   });
   return result;
+}
+
+/** How many strongly red pixels an image file has (a poster). */
+async function redPixels(path: string): Promise<number> {
+  const image = await loadImage(path);
+  const canvas = createCanvas(image.width, image.height);
+  const ctx = canvas.getContext("2d");
+  ctx.drawImage(image, 0, 0);
+  const { data } = ctx.getImageData(0, 0, image.width, image.height);
+  let n = 0;
+  for (let i = 0; i < data.length; i += 4)
+    if ((data[i] as number) > 150 && (data[i + 1] as number) < 90 && (data[i + 2] as number) < 90) n++;
+  return n;
 }
 
 describe("render (end to end)", () => {
@@ -57,6 +71,28 @@ describe("render (end to end)", () => {
       expect(Math.abs(cy - 180)).toBeLessThan(48);
     }
     expect(readdirSync(dir).some((f) => f.includes(".tmp-"))).toBe(false);
+  });
+
+  test("the poster is the frame at posterAt, not the first frame", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    // A red box exists only from 2 s to 3 s: a first-frame poster has none of it.
+    await makeBoxVideo(master, {
+      width: 1280,
+      height: 720,
+      fps: 30,
+      seconds: 3,
+      boxes: [{ x: 600, y: 320, size: 80, from: 2, to: 3 }],
+    });
+    const first = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4"], poster: "jpg" } });
+    await render(first, { out: join(dir, "first") });
+    expect(await redPixels(join(dir, "first.jpg"))).toBe(0);
+    const later = await plan(master, {
+      look: "flat",
+      output: { width: 640, formats: ["mp4"], poster: "jpg", posterAt: 2.5 },
+    });
+    await render(later, { out: join(dir, "later") });
+    expect(await redPixels(join(dir, "later.jpg"))).toBeGreaterThan(500);
   });
 
   test("a hand-edited plan that would upscale is refused before rendering", async () => {

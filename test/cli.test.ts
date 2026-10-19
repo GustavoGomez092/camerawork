@@ -91,6 +91,17 @@ describe("cli", () => {
     expect(existsSync(join(dir, "clip.mp4"))).toBe(false);
   }, 60000);
 
+  test("--poster-at reaches the plan", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "m.mp4");
+    await makeBoxVideo(master, { width: 640, height: 360, fps: 30, seconds: 2, boxes: [] });
+    const planPath = join(dir, "plan.json");
+    expect(cli("plan", master, "-o", planPath, "--look", "flat", "--width", "640", "--poster-at", "1.5").status).toBe(
+      0,
+    );
+    expect(JSON.parse(readFileSync(planPath, "utf8")).output.posterAt).toBe(1.5);
+  });
+
   test("a CameraworkError exits 1 with a camerawork: prefix", () => {
     const r = cli("plan", "/nope/missing.mov", "-o", "/tmp/x.json");
     expect(r.status).toBe(1);

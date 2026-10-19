@@ -17,7 +17,7 @@ import type { Look, Rect } from "./schema.js";
 const USAGE = `Usage:
   camerawork detect <master> -o <changes.json> [--mask x,y,w,h]...
   camerawork plan <master> -o <plan.json> [--cues f] [--changes f] [--look <preset|look.json>] [--loop]
-                  [--width N] [--fps N] [--formats mp4,webm] [--poster jpg|webp|none] [--max-bytes N]
+                  [--width N] [--fps N] [--formats mp4,webm] [--poster jpg|webp|none] [--poster-at S] [--max-bytes N]
                   [--quality medium|high] [--max-zoom N] [--min-hold N] [--mask x,y,w,h]...
   camerawork preview <plan.json> [-o <prefix>]
   camerawork render <plan.json> -o <prefix>
@@ -47,7 +47,7 @@ const rect = (v: string): Rect => {
   return parts as Rect;
 };
 
-const OUTPUT_FLAGS = ["width", "fps", "formats", "poster", "max-bytes", "quality", "loop", "look"];
+const OUTPUT_FLAGS = ["width", "fps", "formats", "poster", "poster-at", "max-bytes", "quality", "loop", "look"];
 const PLAN_FLAGS = [...OUTPUT_FLAGS, "out", "mask", "cues", "changes", "max-zoom", "min-hold"];
 const ALLOWED: Record<string, string[]> = {
   detect: ["out", "mask"],
@@ -134,6 +134,7 @@ async function main(argv: string[]): Promise<void> {
       fps: { type: "string" },
       formats: { type: "string" },
       poster: { type: "string" },
+      "poster-at": { type: "string" },
       "max-bytes": { type: "string" },
       quality: { type: "string" },
       "max-zoom": { type: "string" },
@@ -194,6 +195,7 @@ async function main(argv: string[]): Promise<void> {
           fps: num("fps", values.fps),
           formats: values.formats?.split(","),
           poster,
+          posterAt: num("poster-at", values["poster-at"]),
           maxBytes: num("max-bytes", values["max-bytes"]),
           quality: values.quality,
         }),

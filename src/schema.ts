@@ -70,14 +70,17 @@ const FocusCueSchema = z
   })
   .strict();
 const WideCueSchema = z.object({ t: z.number().nonnegative(), wide: z.literal(true), label }).strict();
+/** Marks the moment the poster image is taken from; it never moves the camera. */
+const PosterCueSchema = z.object({ t: z.number().nonnegative(), poster: z.literal(true), label }).strict();
 const IgnoreCueSchema = z
   .object({ from: z.number().nonnegative(), to: z.number().positive(), ignore: z.literal(true), label })
   .strict();
-export const CueSchema = z.union([FocusCueSchema, WideCueSchema, IgnoreCueSchema]);
+export const CueSchema = z.union([FocusCueSchema, WideCueSchema, PosterCueSchema, IgnoreCueSchema]);
 export type FocusCue = { t: number; rect: Rect; zoom?: number; hold?: number; label?: string };
 export type WideCue = { t: number; wide: true; label?: string };
+export type PosterCue = { t: number; poster: true; label?: string };
 export type IgnoreCue = { from: number; to: number; ignore: true; label?: string };
-export type Cue = FocusCue | WideCue | IgnoreCue;
+export type Cue = FocusCue | WideCue | PosterCue | IgnoreCue;
 
 export const CueFileSchema = z
   .object({
@@ -154,6 +157,8 @@ export const OutputSchema = z
       .min(1)
       .refine((f) => new Set(f).size === f.length, "must not repeat a format"),
     poster: z.enum(["jpg", "webp"]).nullable(),
+    /** Seconds into the video the poster is taken from (a poster cue, or --poster-at); 0 is the first frame. */
+    posterAt: z.number().nonnegative().default(0),
     maxBytes: z.number().int().positive().nullable(),
     aspect: z.number().positive(),
     quality: z.enum(["medium", "high"]),
