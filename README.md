@@ -184,7 +184,7 @@ Detects (unless `--changes` is given), merges cues, and plans the camera. Writes
 | `--formats a,b` | `mp4,webm` | Any of `mp4`, `webm`. |
 | `--poster jpg\|webp\|none` | `jpg` | Poster image written next to the videos. |
 | `--poster-at S` | `0` | Take the poster from S seconds in instead of the first frame (overrides a poster cue). |
-| `--max-bytes N` | none | Fail the render if an output file is larger than N bytes. |
+| `--max-bytes N` | none | Keep every output file at or under N bytes: an encode that comes out larger is re-encoded at lower quality, a step at a time, and the render fails only if even the lowest step is too big. |
 | `--quality medium\|high` | `medium` | Encoder quality. |
 | `--max-zoom N` | `2.2` | Deepest zoom the planner may use. |
 | `--min-hold N` | `1.2` | Seconds the camera stays on a shot. |

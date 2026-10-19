@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { spawnSync } from "node:child_process";
-import { existsSync, mkdirSync, readdirSync, rmSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { createCanvas, loadImage } from "@napi-rs/canvas";
 import { CameraworkError } from "../src/errors.js";
@@ -122,6 +122,35 @@ describe("render (end to end)", () => {
     });
     await expect(render(p, { out: join(dir, "o") })).rejects.toThrow("larger than the 100-byte limit");
     expect(existsSync(join(dir, "o.mp4"))).toBe(false);
+  });
+
+  test("over maxBytes, the render steps the encoder quality down until it fits", async () => {
+    const dir = tmpDir();
+    const master = join(dir, "busy.mp4");
+    // A moving test pattern: unlike flat boxes, its size really depends on the encoder's quality.
+    spawnSync("ffmpeg", [
+      "-y",
+      "-f",
+      "lavfi",
+      "-i",
+      "testsrc2=size=640x360:rate=30",
+      "-t",
+      "2",
+      "-pix_fmt",
+      "yuv420p",
+      master,
+    ]);
+    const free = await plan(master, { look: "flat", output: { width: 640, formats: ["mp4"], poster: null } });
+    await render(free, { out: join(dir, "free") });
+    const natural = statSync(join(dir, "free.mp4")).size;
+    const limit = Math.floor(natural * 0.75);
+    const capped = await plan(master, {
+      look: "flat",
+      output: { width: 640, formats: ["mp4"], poster: null, maxBytes: limit },
+    });
+    await render(capped, { out: join(dir, "capped") });
+    expect(statSync(join(dir, "capped.mp4")).size).toBeLessThanOrEqual(limit);
+    expect(probe(join(dir, "capped.mp4")).duration).toBeCloseTo(2, 0);
   });
 
   test("checkSharpness names the plan's maxZoom when only that is exceeded", async () => {

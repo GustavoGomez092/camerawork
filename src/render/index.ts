@@ -2,13 +2,13 @@ import { existsSync, mkdtempSync, renameSync, rmSync, statSync, writeFileSync } 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { CameraworkError } from "../errors.js";
-import { FrameSink, probe, readFrames, requireFfmpeg } from "../ffmpeg.js";
+import { FrameSink, probe, readFrames, requireFfmpeg, runFfmpeg } from "../ffmpeg.js";
 import { sceneLayout } from "../geometry.js";
 import { cameraAt } from "../plan/interp.js";
 import type { Plan } from "../schema.js";
 import { makeLookAssets } from "./assets.js";
 import { Camera } from "./camera.js";
-import { encoderArgs, pickWebmCodec } from "./encode.js";
+import { CRF_STEPS, encoderArgs, pickWebmCodec, reencodeArgs } from "./encode.js";
 import { sceneArgs } from "./scene.js";
 
 export interface RenderOptions {
@@ -135,6 +135,17 @@ export async function render(plan: Plan, opts: RenderOptions): Promise<string[]>
     await Promise.all(sinks.map((s) => s.end()));
     if (plan.output.maxBytes !== null)
       for (const [path, final] of written) {
+        // Over budget: step the quality down (re-encoding the finished file) before giving up.
+        const format = final.endsWith(".mp4") ? "mp4" : final.endsWith(".webm") ? "webm" : null;
+        if (format)
+          for (const crf of CRF_STEPS[format].slice(1)) {
+            if (statSync(path).size <= plan.output.maxBytes) break;
+            const smaller = `${path}.crf${crf}`;
+            written.push([smaller, smaller]);
+            await runFfmpeg(reencodeArgs(format, path, crf, smaller, codec));
+            renameSync(smaller, path);
+            written.pop();
+          }
         const size = statSync(path).size;
         if (size > plan.output.maxBytes)
           throw new CameraworkError(
